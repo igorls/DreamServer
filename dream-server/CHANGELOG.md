@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-03-04
+
+### Added
+- AMD Strix Halo support with ROCm 7.2 and unified memory tiers (SH_LARGE, SH_COMPACT)
+- NVIDIA ultra tier (NV_ULTRA) for 90GB+ multi-GPU configurations
+- Qwen3 Coder Next (80B MoE) model support for high-memory systems
+- Product landing page README with screenshots and YouTube demo
+- Dashboard screenshots, installer GIF, and download sequence images
+- Architecture Decision Record for Docker image tag pinning
+- 55 pytest unit tests for dashboard-api (GPU, helpers, config, agent monitor, security)
+- CI workflow for dashboard-api tests
+
+### Changed
+- README rewritten as product landing page (feature highlights, comparison table, screenshots)
+- CONTRIBUTING.md updated from legacy "Lighthouse AI" branding to "Dream Server"
+- Repository About section updated with new description, website, and topics
+
+### Fixed
+- Timing attack vulnerability in privacy-shield API key comparison (now uses `secrets.compare_digest`)
+- `HTTPBearer(auto_error=False)` in privacy-shield silently passing `None` instead of returning 401
+- Dependency version bounds added to privacy-shield and token-spy requirements.txt
+
 ## [2.0.0] - 2026-03-03
 
 ### Added
