@@ -227,10 +227,13 @@ Thanks to [kyuz0](https://github.com/kyuz0) for [amd-strix-halo-toolboxes](https
 ### Projects that make Dream Server possible
 
 *   [llama.cpp (ggerganov)](https://github.com/ggml-org/llama.cpp) — LLM inference engine
+*   [Qwen (Alibaba Cloud)](https://github.com/QwenLM/Qwen) — Default language models
 *   [Open WebUI](https://github.com/open-webui/open-webui) — Chat interface
+*   [ComfyUI](https://github.com/comfyanonymous/ComfyUI) — Image generation engine
+*   [FLUX.1 (Black Forest Labs)](https://github.com/black-forest-labs/flux) — Image generation model
+*   [AMD ROCm](https://github.com/ROCm/ROCm) — GPU compute platform
 *   [AMD Strix Halo Toolboxes (kyuz0)](https://github.com/kyuz0/amd-strix-halo-toolboxes) — Pre-built ROCm containers for AMD inference
 *   [Strix Halo Testing (lhl)](https://github.com/lhl/strix-halo-testing) — Foundational Strix Halo AI research and rocWMMA optimizations
-*   [ComfyUI](https://github.com/comfyanonymous/ComfyUI) — Image generation engine
 *   [n8n](https://github.com/n8n-io/n8n) — Workflow automation
 *   [Qdrant](https://github.com/qdrant/qdrant) — Vector database
 *   [SearXNG](https://github.com/searxng/searxng) — Privacy-respecting search
@@ -239,6 +242,8 @@ Thanks to [kyuz0](https://github.com/kyuz0) for [amd-strix-halo-toolboxes](https
 *   [Kokoro FastAPI (remsky)](https://github.com/remsky/Kokoro-FastAPI) — Text-to-speech
 *   [Speaches](https://github.com/speaches-ai/speaches) — Speech-to-text
 *   [Strix Halo Home Lab](https://strixhalo-homelab.d7.wtf/) — Community knowledge base
+
+If we missed anyone, [open an issue](https://github.com/Light-Heart-Labs/DreamServer/issues). We want to get this right.
 
 ---
 
