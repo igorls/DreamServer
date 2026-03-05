@@ -93,6 +93,45 @@ This hot-swaps from the 1.5B bootstrap model to your full model without downtime
 
 This downloads the full model first. You'll wait longer before first use.
 
+### How do I switch to a different model?
+Use the `dream` CLI:
+```bash
+dream model current              # See what's running
+dream model list                 # Show available tiers and models
+dream model swap T3              # Switch to Tier 3 (e.g., Qwen3 14B)
+```
+
+The model file must already be downloaded. If it isn't, pre-fetch it first:
+```bash
+./scripts/pre-download.sh --tier 3
+```
+
+### Can I use my own GGUF model?
+Yes. Drop the `.gguf` file into `data/models/`, then update `.env`:
+```bash
+GGUF_FILE=my-model.gguf
+LLM_MODEL=my-model
+```
+Restart the inference server:
+```bash
+docker compose restart llama-server
+```
+The model will load in ~30-120 seconds depending on size. If it fails, Dream Server automatically rolls back to the previous model.
+
+### What models are available?
+The installer auto-selects based on your GPU, but you can switch between any tier:
+
+| Tier | Model | Min VRAM |
+|------|-------|----------|
+| T1 | Qwen3 8B | 8 GB |
+| T2 | Qwen3 8B | 12 GB |
+| T3 | Qwen3 14B | 20 GB |
+| T4 | Qwen3 30B-A3B (MoE) | 40 GB |
+| SH_COMPACT | Qwen3 30B-A3B (MoE) | 64 GB unified |
+| SH_LARGE | Qwen3 Coder Next 80B (MoE) | 90 GB unified |
+
+Run `dream model list` for the full list on your system.
+
 ### NVIDIA GPU not detected
 **Check driver:**
 ```bash
@@ -356,11 +395,9 @@ docker compose down -v
 ## Advanced
 
 ### How do I add a custom model?
-1. Download model to `data/models/` directory
-2. Edit `.env` — change `LLM_MODEL` and `GGUF_FILE` variables
-3. Restart: `docker compose up -d llama-server`
+See [How do I switch to a different model?](#how-do-i-switch-to-a-different-model) and [Can I use my own GGUF model?](#can-i-use-my-own-gguf-model) above.
 
-Supported formats: AWQ, GPTQ, EXL2, GGUF (via llama.cpp adapter)
+**Short version:** Drop your `.gguf` file into `data/models/`, set `GGUF_FILE` and `LLM_MODEL` in `.env`, run `docker compose restart llama-server`. Rollback is automatic on failure.
 
 ### How do I enable HTTPS?
 For production deployments, use a reverse proxy (nginx, Caddy, Traefik) in front of Dream Server:
@@ -486,4 +523,4 @@ Copy the output into your GitHub issue.
 
 ---
 
-*Last updated: 2026-02-11*
+*Last updated: 2026-03-05*

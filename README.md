@@ -174,6 +174,33 @@ Skip bootstrap: `./install.sh --no-bootstrap`
 
 ---
 
+## Switching Models
+
+The installer picks a model for your hardware, but you can switch anytime:
+
+```bash
+dream model current              # What's running now?
+dream model list                 # Show all available tiers
+dream model swap T3              # Switch to a different tier
+```
+
+If the new model isn't downloaded yet, pre-fetch it first:
+
+```bash
+./scripts/pre-download.sh --tier 3    # Download before switching
+dream model swap T3                    # Then swap (restarts llama-server)
+```
+
+Already have a GGUF you want to use? Drop it in `data/models/`, update `GGUF_FILE` and `LLM_MODEL` in `.env`, and restart:
+
+```bash
+docker compose restart llama-server
+```
+
+Rollback is automatic — if a new model fails to load, Dream Server reverts to your previous model.
+
+---
+
 ## Extensibility
 
 Dream Server is designed to be modded. Every service is an extension — a folder with a `manifest.yaml` and a `compose.yaml`. The dashboard, CLI, health checks, and compose stack all discover extensions automatically.
