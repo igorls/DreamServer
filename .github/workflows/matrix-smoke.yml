@@ -10,6 +10,9 @@ on:
 jobs:
   linux-smoke:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dream-server
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,9 +52,13 @@ jobs:
             expected_pkg: zypper
     runs-on: ubuntu-latest
     container: ${{ matrix.container }}
+    defaults:
+      run:
+        working-directory: dream-server
     name: "distro: ${{ matrix.distro }}"
     steps:
       - name: Install git (distro-aware)
+        working-directory: /
         run: |
           if command -v apt-get &>/dev/null; then
             apt-get update -qq && apt-get install -y -qq git curl
@@ -67,6 +74,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Verify /etc/os-release
+        working-directory: /
         run: |
           echo "=== /etc/os-release ==="
           cat /etc/os-release
@@ -122,6 +130,9 @@ jobs:
 
   macos-smoke:
     runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: dream-server
     steps:
       - name: Checkout
         uses: actions/checkout@v4
