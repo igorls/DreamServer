@@ -186,7 +186,7 @@ if [[ -d "$INSTALL_DIR" ]]; then
         warn "Directory exists but incomplete install at $INSTALL_DIR"
         echo ""
         echo -n "  Remove and reinstall? [y/N] "
-        read -r response
+        read -r response < /dev/tty || response=""
         if [[ "$response" =~ ^[Yy]$ ]]; then
             rm -rf "$INSTALL_DIR"
         else
@@ -238,4 +238,11 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 cd "$INSTALL_DIR"
+
+# When piped via "curl ... | bash", stdin is the curl stream, not the terminal.
+# Reconnect stdin to the real terminal so all interactive prompts work.
+if [[ ! -t 0 ]] && [[ -e /dev/tty ]]; then
+    exec < /dev/tty
+fi
+
 exec ./install.sh "$@"
