@@ -28,7 +28,12 @@ if [[ -f "$_FT_DIR/lib/service-registry.sh" ]]; then
     [[ -f "$_FT_DIR/.env" ]] && set -a && . "$_FT_DIR/.env" && set +a
 fi
 
-# Service endpoints — resolved from registry
+# Ensure SERVICE_PORTS exists (may not be set if service-registry is missing)
+if ! declare -p SERVICE_PORTS &>/dev/null 2>&1; then
+    declare -A SERVICE_PORTS=()
+fi
+
+# Service endpoints — resolved from registry (with fallback defaults for unset keys)
 LLM_URL="${LLM_URL:-http://localhost:${SERVICE_PORTS[llama-server]:-8080}}"
 WHISPER_URL="${WHISPER_URL:-http://localhost:${SERVICE_PORTS[whisper]:-9000}}"
 TTS_URL="${TTS_URL:-http://localhost:${SERVICE_PORTS[tts]:-8880}}"
