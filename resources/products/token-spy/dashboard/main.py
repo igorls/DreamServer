@@ -97,6 +97,38 @@ logging.basicConfig(
 )
 logger = logging.getLogger("token-spy-dashboard")
 
+
+def normalize_cost_and_speed_metrics(
+    total_tokens: Optional[int],
+    total_cost: Optional[float],
+    avg_latency_ms: Optional[float],
+    avg_ttft_ms: Optional[float] = None,
+) -> Dict[str, Optional[float]]:
+    """Mirror sidecar normalization logic for cost/speed model metrics."""
+    tokens_value = int(total_tokens) if total_tokens is not None else 0
+    cost_value = float(total_cost) if total_cost is not None else 0.0
+
+    cost_per_1k_tokens = (
+        (cost_value / tokens_value) * 1000 if tokens_value > 0 else None
+    )
+
+    total_time_ms = 0.0
+    if avg_ttft_ms is not None and avg_ttft_ms > 0:
+        total_time_ms += float(avg_ttft_ms)
+    if avg_latency_ms is not None and avg_latency_ms > 0:
+        total_time_ms += float(avg_latency_ms)
+
+    tokens_per_second = (
+        (tokens_value * 1000 / total_time_ms)
+        if tokens_value > 0 and total_time_ms > 0
+        else None
+    )
+
+    return {
+        "cost_per_1k_tokens": cost_per_1k_tokens,
+        "tokens_per_second": tokens_per_second,
+    }
+
 # ============================================
 # Database Connection Pool
 # ============================================
@@ -1017,6 +1049,23 @@ async def get_overview(auth_user: Optional[str] = Depends(verify_auth)):
             """
             top_model = await conn.fetchval(top_model_query)
             
+            budget_row = await conn.fetchrow("""
+                SELECT
+                    SUM(tokens_used_this_month) AS tokens_used,
+                    SUM(monthly_token_limit) AS token_limit
+                FROM api_keys
+                WHERE is_active = TRUE
+                  AND monthly_token_limit IS NOT NULL
+                  AND monthly_token_limit > 0
+            """)
+            budget_used_percent = None
+            if budget_row and budget_row["token_limit"]:
+                budget_used_percent = (
+                    float(budget_row["tokens_used"] or 0)
+                    / float(budget_row["token_limit"])
+                    * 100
+                )
+
             return OverviewResponse(
                 total_requests_24h=row_24h["requests"] or 0,
                 total_tokens_24h=row_24h["tokens"] or 0,
@@ -1024,7 +1073,7 @@ async def get_overview(auth_user: Optional[str] = Depends(verify_auth)):
                 active_sessions=active_sessions,
                 avg_latency_ms=float(row_24h["latency"]) if row_24h["latency"] else None,
                 top_model=top_model,
-                budget_used_percent=None  # TODO: Calculate based on plan limits
+                budget_used_percent=budget_used_percent
             )
     except Exception as e:
         logger.error(f"Failed to get overview: {e}")
@@ -1110,19 +1159,28 @@ async def get_models_list(
             """ % days
             
             rows = await conn.fetch(query)
-            return [
-                ModelMetrics(
-                    provider=row["provider"],
-                    model=row["model"],
-                    request_count=row["request_count"],
+            model_metrics: List[ModelMetrics] = []
+            for row in rows:
+                avg_latency_ms = float(row["avg_latency_ms"]) if row["avg_latency_ms"] else None
+                normalized = normalize_cost_and_speed_metrics(
                     total_tokens=row["total_tokens"],
                     total_cost=float(row["total_cost"]),
-                    avg_latency_ms=float(row["avg_latency_ms"]) if row["avg_latency_ms"] else None,
-                    tokens_per_second=None,  # TODO: Calculate
-                    cost_per_1k_tokens=None  # TODO: Calculate
+                    avg_latency_ms=avg_latency_ms,
                 )
-                for row in rows
-            ]
+                model_metrics.append(
+                    ModelMetrics(
+                        provider=row["provider"],
+                        model=row["model"],
+                        request_count=row["request_count"],
+                        total_tokens=row["total_tokens"],
+                        total_cost=float(row["total_cost"]),
+                        avg_latency_ms=avg_latency_ms,
+                        tokens_per_second=normalized["tokens_per_second"],
+                        cost_per_1k_tokens=normalized["cost_per_1k_tokens"],
+                    )
+                )
+
+            return model_metrics
     except Exception as e:
         logger.error(f"Failed to get models: {e}")
         raise HTTPException(status_code=500, detail=str(e))
