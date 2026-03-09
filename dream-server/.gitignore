@@ -28,6 +28,11 @@ config/openclaw/workspace/
 dashboard/node_modules/
 dashboard/dist/
 
+# CLI installer build artifacts
+cli-installer/node_modules/
+cli-installer/dist/
+cli-installer/bun.lock
+
 # Preflight logs
 preflight-*.log
 

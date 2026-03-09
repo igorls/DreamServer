@@ -1,0 +1,68 @@
+// ── Phase 03: Feature Selection ─────────────────────────────────────────────
+
+import { type InstallContext, FEATURE_PRESETS, type FeatureSet } from '../lib/config.ts';
+import { select, multiSelect } from '../lib/prompts.ts';
+import * as ui from '../lib/ui.ts';
+
+export async function features(ctx: InstallContext): Promise<FeatureSet> {
+  ui.phase(3, 6, 'Feature Selection');
+
+  if (!ctx.interactive) {
+    ui.info('Non-interactive mode — using Full Stack defaults');
+    ctx.features = { ...FEATURE_PRESETS.full };
+    return ctx.features;
+  }
+
+  const choice = await select('Select installation profile', [
+    {
+      label: 'Full Stack',
+      description: 'Chat + Voice + Workflows + RAG + AI Agents (~16GB)',
+      hint: 'recommended',
+    },
+    {
+      label: 'Core Only',
+      description: 'Chat interface + API (~12GB)',
+    },
+    {
+      label: 'Custom',
+      description: 'Choose individual components',
+    },
+  ]);
+
+  if (choice === 0) {
+    ctx.features = { ...FEATURE_PRESETS.full };
+    ui.ok('Selected: Full Stack');
+  } else if (choice === 1) {
+    ctx.features = { ...FEATURE_PRESETS.core };
+    ui.ok('Selected: Core Only');
+  } else {
+    // TUI multi-select picker
+    const results = await multiSelect('Toggle features to install', [
+      { label: 'Voice', description: 'Whisper STT + Kokoro TTS', checked: true },
+      { label: 'Workflows', description: 'n8n automation', checked: true },
+      { label: 'RAG', description: 'Qdrant vector database', checked: true },
+      { label: 'OpenClaw', description: 'AI agent framework', checked: false },
+    ]);
+
+    ctx.features = {
+      voice: results[0],
+      workflows: results[1],
+      rag: results[2],
+      openclaw: results[3],
+    };
+    ui.ok('Selected: Custom');
+  }
+
+  // Display selected features
+  const f = ctx.features;
+  const enabled = Object.entries(f)
+    .filter(([, v]) => v)
+    .map(([k]) => k);
+  if (enabled.length > 0) {
+    ui.info(`Features: ${enabled.join(', ')}`);
+  } else {
+    ui.info('Features: core only');
+  }
+
+  return ctx.features;
+}

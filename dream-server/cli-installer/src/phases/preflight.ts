@@ -1,0 +1,141 @@
+// ── Phase 01: Preflight ─────────────────────────────────────────────────────
+
+import { type InstallContext } from '../lib/config.ts';
+import { exec, commandExists } from '../lib/shell.ts';
+import * as ui from '../lib/ui.ts';
+import { existsSync } from 'node:fs';
+
+export interface PreflightResult {
+  os: string;
+  distro: string;
+  arch: string;
+  hasDocker: boolean;
+  hasDockerCompose: boolean;
+  hasGit: boolean;
+  hasCurl: boolean;
+  hasNvidiaSmi: boolean;
+  dockerRunning: boolean;
+  tailscaleIp: string | null;
+}
+
+export async function preflight(ctx: InstallContext): Promise<PreflightResult> {
+  ui.phase(1, 6, 'Preflight', '~5s');
+  ui.step('Scanning system...');
+
+  // Root check
+  if (process.getuid?.() === 0) {
+    ui.fail('Do not run as root. Use a regular user with sudo access.');
+    process.exit(1);
+  }
+
+  // OS Detection
+  const os = process.platform === 'darwin' ? 'macos' : 'linux';
+  let distro = '';
+  if (existsSync('/etc/os-release')) {
+    const content = await Bun.file('/etc/os-release').text();
+    const match = content.match(/^PRETTY_NAME="?(.+?)"?$/m);
+    if (match) distro = match[1];
+  }
+  ctx.system.os = os;
+  ctx.system.distro = distro;
+  ctx.system.arch = process.arch;
+  ui.ok(`OS: ${distro || os} (${process.arch})`);
+
+  // Tool checks
+  const [hasGit, hasCurl, hasNvidiaSmi] = await Promise.all([
+    commandExists('git'),
+    commandExists('curl'),
+    commandExists('nvidia-smi'),
+  ]);
+
+  // Docker: verify we can actually talk to the daemon, not just that the binary exists
+  let hasDocker = false;
+  let hasDockerCompose = false;
+  let dockerRunning = false;
+
+  try {
+    const { getComposeCommand } = await import('../lib/docker.ts');
+    const composeCmd = await getComposeCommand();
+    hasDocker = true;
+    hasDockerCompose = true;
+    dockerRunning = true;
+    ui.ok(`Docker ready (${composeCmd.join(' ')})`);
+  } catch (e) {
+    // Check if Docker binary exists at all
+    const hasBinary = await commandExists('docker');
+    if (!hasBinary) {
+      ui.fail('Docker not found');
+      ui.info('Install: curl -fsSL https://get.docker.com | sh');
+    } else {
+      hasDocker = true;
+      // Binary exists but daemon access failed
+      ui.fail('Cannot connect to Docker daemon');
+      console.log('');
+      ui.info('Fix with one of:');
+      console.log('     sudo usermod -aG docker $USER && newgrp docker');
+      console.log('     # or start the daemon:');
+      console.log('     sudo systemctl start docker');
+    }
+    if (!ctx.dryRun && !ctx.force) {
+      console.log('');
+      ui.fail('Docker access is required. Fix the issue above and re-run.');
+      process.exit(1);
+    }
+  }
+
+  if (hasGit) ui.ok('git installed');
+  else ui.warn('git not found — will attempt install');
+
+  if (hasCurl) ui.ok('curl installed');
+  else ui.warn('curl not found');
+
+  // Tailscale detection
+  let tailscaleIp: string | null = null;
+  const hasTailscale = await commandExists('tailscale');
+  if (hasTailscale) {
+    try {
+      const result = await exec(['tailscale', 'ip', '-4'], { throwOnError: false, timeout: 3000 });
+      if (result.exitCode === 0 && result.stdout.trim()) {
+        tailscaleIp = result.stdout.trim();
+        ui.ok(`Tailscale detected (${tailscaleIp})`);
+      }
+    } catch { /* not connected */ }
+    if (!tailscaleIp) {
+      ui.info('Tailscale installed but not connected');
+    }
+  }
+
+  return { os, distro, arch: process.arch, hasDocker, hasDockerCompose, hasGit, hasCurl, hasNvidiaSmi, dockerRunning, tailscaleIp };
+}
+
+async function checkDockerCompose(): Promise<boolean> {
+  // Try v2 plugin first, then standalone
+  try {
+    await exec(['docker', 'compose', 'version'], { timeout: 5000 });
+    return true;
+  } catch {
+    return commandExists('docker-compose');
+  }
+}
+
+async function isDockerRunning(): Promise<boolean> {
+  // Method 1: docker info (works if user has socket permissions)
+  try {
+    const result = await exec(['docker', 'info'], { throwOnError: false, timeout: 5000 });
+    if (result.exitCode === 0) return true;
+  } catch { /* try next */ }
+
+  // Method 2: systemctl status (works even without socket perms)
+  try {
+    const result = await exec(['systemctl', 'is-active', 'docker'], { throwOnError: false, timeout: 5000 });
+    if (result.stdout.trim() === 'active') return true;
+  } catch { /* try next */ }
+
+  // Method 3: Check if docker socket exists and is a socket
+  try {
+    const result = await exec(['test', '-S', '/var/run/docker.sock'], { throwOnError: false, timeout: 2000 });
+    if (result.exitCode === 0) return true;
+  } catch { /* give up */ }
+
+  return false;
+}
