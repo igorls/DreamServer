@@ -251,10 +251,6 @@ async function showGpuStatus(backend: string): Promise<GpuInfo | null> {
       console.log('');
       ui.warn(`Only ${freeMB} MB VRAM free — LLM may fail to load`);
       if (processes.length > 0) {
-        const nonDreamProcs = processes.filter(p => {
-          const containerMap = new Map(); // re-check inline
-          return true; // show all for now
-        });
         ui.info('Stop GPU-heavy processes or use: dream-installer config --tier');
       }
     }
