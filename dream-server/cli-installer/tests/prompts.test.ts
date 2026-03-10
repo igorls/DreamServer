@@ -58,11 +58,18 @@ describe('prompts.ts', () => {
   });
 
   test('multiSelect() handles non-TTY environments gracefully', async () => {
-    // Bun test environment does not have process.stdin.isTTY = true by default
-    const res = await prompts.multiSelect('Select features', [
-      { label: 'Feat1', checked: true },
-      { label: 'Feat2', checked: false }
-    ]);
-    expect(res).toEqual([true, false]);
+    // Explicitly force non-TTY so multiSelect() hits the early-return path
+    // (Bun's test runner may provide a TTY-like stdin that would hang)
+    const originalIsTTY = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true });
+    try {
+      const res = await prompts.multiSelect('Select features', [
+        { label: 'Feat1', checked: true },
+        { label: 'Feat2', checked: false }
+      ]);
+      expect(res).toEqual([true, false]);
+    } finally {
+      Object.defineProperty(process.stdin, 'isTTY', { value: originalIsTTY, configurable: true });
+    }
   });
 });
