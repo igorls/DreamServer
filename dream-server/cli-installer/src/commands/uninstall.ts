@@ -4,9 +4,9 @@ import { exec } from '../lib/shell.ts';
 import { getComposeCommand } from '../lib/docker.ts';
 import { DEFAULT_INSTALL_DIR } from '../lib/config.ts';
 import * as ui from '../lib/ui.ts';
+import * as prompts from '../lib/prompts.ts';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import * as readline from 'node:readline';
 
 export interface UninstallOptions {
   dir?: string;
@@ -36,7 +36,7 @@ export async function uninstall(opts: UninstallOptions): Promise<void> {
     }
     console.log('');
 
-    const confirmed = await confirm('Are you sure you want to uninstall? (yes/no): ');
+    const confirmed = await prompts.confirm('Are you sure you want to uninstall?');
     if (!confirmed) {
       ui.info('Uninstall cancelled.');
       return;
@@ -68,7 +68,7 @@ export async function uninstall(opts: UninstallOptions): Promise<void> {
     }
 
     // ── Step 2: Remove images ──
-    const removeImages = opts.force || await confirm('Remove downloaded Docker images? (saves disk space) (yes/no): ');
+    const removeImages = opts.force || await prompts.confirm('Remove downloaded Docker images? (saves disk space)');
     if (removeImages) {
       const imgSpinner = new ui.Spinner('Removing Docker images...');
       imgSpinner.start();
@@ -116,7 +116,7 @@ export async function uninstall(opts: UninstallOptions): Promise<void> {
   if (opts.keepData) {
     ui.info('Keeping data directory (--keep-data specified)');
   } else {
-    const deleteData = opts.force || await confirm(`Delete installation directory ${installDir}? (yes/no): `);
+    const deleteData = opts.force || await prompts.confirm(`Delete installation directory ${installDir}?`);
     if (deleteData) {
       const delSpinner = new ui.Spinner(`Removing ${installDir}...`);
       delSpinner.start();
@@ -143,16 +143,4 @@ export async function uninstall(opts: UninstallOptions): Promise<void> {
     ui.info('To reinstall: dream-installer install');
   }
   console.log('');
-}
-
-// ── Helpers ──
-
-function confirm(prompt: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    rl.question(`  ${prompt}`, (answer) => {
-      rl.close();
-      resolve(answer.trim().toLowerCase() === 'yes' || answer.trim().toLowerCase() === 'y');
-    });
-  });
 }
