@@ -141,6 +141,10 @@ if ext_dir.exists():
 # (llama-server has no model in cloud mode, so its healthcheck never passes)
 local_mode_overlay = script_dir / "docker-compose.local.yml"
 if local_mode_overlay.exists() and gpu_backend not in ("apple",):
+    # DREAM_MODE is read from .env rather than passed as a CLI arg because this script
+    # is called from multiple contexts (dream-cli, installer, CI) that do not all pass
+    # it as an argument. Reading .env keeps a single source of truth.
+    # Future: pass DREAM_MODE as a CLI arg (like gpu_backend) to eliminate this read.
     dream_mode = ""
     env_file = script_dir / ".env"
     if env_file.exists():
