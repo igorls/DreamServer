@@ -43,7 +43,7 @@ from helpers import (
 from agent_monitor import collect_metrics
 
 # --- Router imports ---
-from routers import workflows, features, setup, updates, agents, privacy
+from routers import workflows, features, setup, updates, agents, privacy, models
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +92,7 @@ app.include_router(setup.router)
 app.include_router(updates.router)
 app.include_router(agents.router)
 app.include_router(privacy.router)
+app.include_router(models.router)
 
 
 # ================================================================
@@ -239,9 +240,16 @@ async def api_status(api_key: str = Depends(verify_api_key)):
     service_statuses = await get_all_services()
     model_info = get_model_info()
     bootstrap_info = get_bootstrap_status()
-    llama_metrics_data, loaded_model, context_size = await asyncio.gather(
-        get_llama_metrics(), get_loaded_model(), get_llama_context_size(),
-    )
+
+    # Only query llama-server metrics when it's the active backend
+    from routers.models import _get_llm_backend
+    llm_backend = _get_llm_backend()
+    if llm_backend == "llama-server":
+        llama_metrics_data, loaded_model, context_size = await asyncio.gather(
+            get_llama_metrics(), get_loaded_model(), get_llama_context_size(),
+        )
+    else:
+        llama_metrics_data, loaded_model, context_size = {}, None, None
 
     gpu_data = None
     if gpu_info:
