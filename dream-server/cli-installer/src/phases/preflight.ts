@@ -241,7 +241,7 @@ async function autoInstallNvidiaCTK(): Promise<boolean> {
     // Add NVIDIA Container Toolkit repository
     const addRepo = await exec(
       ['sudo', 'sh', '-c',
-        'curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg ' +
+        'curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor --yes -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg ' +
         '&& curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | ' +
         'sed "s#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g" | ' +
         'tee /etc/apt/sources.list.d/nvidia-container-toolkit.list > /dev/null'],
