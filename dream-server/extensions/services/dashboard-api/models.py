@@ -7,6 +7,12 @@ from pydantic import BaseModel, Field
 from config import GPU_BACKEND
 
 
+class GPUProcess(BaseModel):
+    pid: int
+    name: str
+    memory_mb: int
+
+
 class GPUInfo(BaseModel):
     name: str
     memory_used_mb: int
@@ -17,6 +23,7 @@ class GPUInfo(BaseModel):
     power_w: Optional[float] = None
     memory_type: str = "discrete"
     gpu_backend: str = GPU_BACKEND
+    processes: list[GPUProcess] = []
 
 
 class ServiceStatus(BaseModel):

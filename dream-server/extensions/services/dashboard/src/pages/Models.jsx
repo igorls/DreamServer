@@ -205,7 +205,7 @@ export default function Models() {
       )}
 
       {/* Add Custom Model Button (shown in GGUF tab) */}
-      {filter === 'llama-server' && (
+      {filter === 'local' && (
         <div className="mb-5">
           <button
             onClick={() => setShowAddForm(true)}
@@ -444,10 +444,20 @@ function ActiveModelBanner({ model, gpu, onUnload }) {
 /* ------------------------------------------------------------------ */
 
 function VramMeter({ gpu }) {
+  const [expanded, setExpanded] = useState(false)
   const pct = gpu.vramTotal > 0 ? (gpu.vramUsed / gpu.vramTotal) * 100 : 0
   const barColor = pct > 90 ? 'from-red-500 to-red-600'
     : pct > 70 ? 'from-yellow-500 to-amber-500'
     : 'from-indigo-500 to-purple-500'
+
+  const processes = gpu.processes || []
+  const hasProcesses = processes.length > 0
+
+  // Colors for process segments
+  const processColors = [
+    'bg-indigo-500', 'bg-purple-500', 'bg-emerald-500', 'bg-amber-500',
+    'bg-cyan-500', 'bg-rose-500', 'bg-teal-500', 'bg-orange-500',
+  ]
 
   return (
     <div className="mb-6 p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">
@@ -459,15 +469,64 @@ function VramMeter({ gpu }) {
           {gpu.vramUsed?.toFixed(1)} / {gpu.vramTotal?.toFixed(0)} GB
         </span>
       </div>
-      <div className="h-2.5 bg-zinc-700 rounded-full overflow-hidden">
-        <div
-          className={`h-full bg-gradient-to-r ${barColor} rounded-full transition-all duration-500`}
-          style={{ width: `${Math.min(pct, 100)}%` }}
-        />
+
+      {/* Main VRAM bar */}
+      {hasProcesses ? (
+        <div className="h-2.5 bg-zinc-700 rounded-full overflow-hidden flex">
+          {processes.map((proc, i) => {
+            const procPct = gpu.vramTotal > 0 ? ((proc.memoryMb / 1024) / gpu.vramTotal) * 100 : 0
+            return (
+              <div
+                key={proc.pid}
+                className={`h-full ${processColors[i % processColors.length]} transition-all duration-500`}
+                style={{ width: `${Math.min(procPct, 100)}%` }}
+                title={`${proc.name} (PID ${proc.pid}): ${(proc.memoryMb / 1024).toFixed(1)} GB`}
+              />
+            )
+          })}
+        </div>
+      ) : (
+        <div className="h-2.5 bg-zinc-700 rounded-full overflow-hidden">
+          <div
+            className={`h-full bg-gradient-to-r ${barColor} rounded-full transition-all duration-500`}
+            style={{ width: `${Math.min(pct, 100)}%` }}
+          />
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mt-2">
+        <p className="text-xs text-zinc-500">
+          {gpu.vramFree?.toFixed(1)} GB free • Models with <span className="text-green-400">Fits GPU</span> badge can be loaded
+        </p>
+        {hasProcesses && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1 transition-colors"
+          >
+            {processes.length} process{processes.length !== 1 ? 'es' : ''}
+            <ChevronDown size={12} className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
+          </button>
+        )}
       </div>
-      <p className="text-xs text-zinc-500 mt-2">
-        {gpu.vramFree?.toFixed(1)} GB free • Models with <span className="text-green-400">Fits GPU</span> badge can be loaded
-      </p>
+
+      {/* Per-process breakdown */}
+      {expanded && hasProcesses && (
+        <div className="mt-3 pt-3 border-t border-zinc-800 space-y-2">
+          {processes.map((proc, i) => (
+            <div key={proc.pid} className="flex items-center gap-3 text-xs">
+              <div className={`w-2.5 h-2.5 rounded-full ${processColors[i % processColors.length]} flex-shrink-0`} />
+              <span className="text-zinc-300 font-medium flex-1 truncate">{proc.name}</span>
+              <span className="text-zinc-500 font-mono">PID {proc.pid}</span>
+              <span className="text-white font-mono min-w-[60px] text-right">
+                {proc.memoryMb >= 1024
+                  ? `${(proc.memoryMb / 1024).toFixed(1)} GB`
+                  : `${proc.memoryMb} MB`
+                }
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

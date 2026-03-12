@@ -411,6 +411,10 @@ async def list_models(api_key: str = Depends(verify_api_key)):
             "vramTotal": round(gpu.memory_total_mb / 1024, 1),
             "vramUsed": round(gpu.memory_used_mb / 1024, 1),
             "vramFree": round((gpu.memory_total_mb - gpu.memory_used_mb) / 1024, 1),
+            "processes": [
+                {"pid": p.pid, "name": p.name, "memoryMb": p.memory_mb}
+                for p in gpu.processes
+            ] if gpu.processes else [],
         }
 
     return {

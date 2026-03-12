@@ -6,9 +6,90 @@ import platform
 import subprocess
 from typing import Optional
 
-from models import GPUInfo
+from models import GPUInfo, GPUProcess
 
 logger = logging.getLogger(__name__)
+
+
+def _get_process_name(pid: int) -> str:
+    """Get a clean process name from /proc/{pid}/comm or cmdline."""
+    try:
+        with open(f"/proc/{pid}/comm", "r") as f:
+            return f.read().strip()
+    except (OSError, IOError):
+        pass
+    try:
+        with open(f"/proc/{pid}/cmdline", "r") as f:
+            cmdline = f.read().split("\x00")[0]
+            return os.path.basename(cmdline) if cmdline else f"PID {pid}"
+    except (OSError, IOError):
+        return f"PID {pid}"
+
+
+def get_gpu_processes_nvidia() -> list[GPUProcess]:
+    """Get per-process GPU memory usage from nvidia-smi."""
+    success, output = run_command([
+        "nvidia-smi",
+        "--query-compute-apps=pid,process_name,used_memory",
+        "--format=csv,noheader,nounits"
+    ])
+    if not success or not output:
+        return []
+
+    processes = []
+    for line in output.strip().splitlines():
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) < 3:
+            continue
+        try:
+            pid = int(parts[0])
+            name = os.path.basename(parts[1]) if parts[1] else _get_process_name(pid)
+            mem_mb = int(parts[2])
+            if mem_mb > 0:
+                processes.append(GPUProcess(pid=pid, name=name, memory_mb=mem_mb))
+        except (ValueError, TypeError):
+            continue
+    return sorted(processes, key=lambda p: p.memory_mb, reverse=True)
+
+
+def get_gpu_processes_amd() -> list[GPUProcess]:
+    """Get per-process GPU memory usage from /proc fdinfo (amdgpu)."""
+    import glob
+
+    processes = []
+    seen_pids = set()
+
+    for fdinfo_path in glob.glob("/proc/*/fdinfo/*"):
+        try:
+            parts = fdinfo_path.split("/")
+            pid = int(parts[2])
+            if pid in seen_pids:
+                continue
+
+            with open(fdinfo_path, "r") as f:
+                content = f.read()
+
+            if "drm-driver:" not in content or "amdgpu" not in content:
+                continue
+
+            seen_pids.add(pid)
+            vram_kb = 0
+            for line in content.splitlines():
+                if line.startswith("amd-memory-vram:") or line.startswith("drm-memory-vram:"):
+                    try:
+                        val = line.split(":")[1].strip().split()[0]
+                        vram_kb += int(val)
+                    except (ValueError, IndexError):
+                        pass
+
+            if vram_kb > 0:
+                mem_mb = vram_kb // 1024
+                name = _get_process_name(pid)
+                processes.append(GPUProcess(pid=pid, name=name, memory_mb=mem_mb))
+        except (OSError, IOError, ValueError):
+            continue
+
+    return sorted(processes, key=lambda p: p.memory_mb, reverse=True)
 
 
 def run_command(cmd: list[str], timeout: int = 5) -> tuple[bool, str]:
@@ -108,6 +189,7 @@ def get_gpu_info_amd() -> Optional[GPUInfo]:
             power_w=power_w,
             memory_type=memory_type,
             gpu_backend="amd",
+            processes=get_gpu_processes_amd(),
         )
     except (ValueError, TypeError):
         return None
@@ -157,6 +239,8 @@ def get_gpu_info_nvidia() -> Optional[GPUInfo]:
         if not gpus:
             return None
 
+        procs = get_gpu_processes_nvidia()
+
         if len(gpus) == 1:
             g = gpus[0]
             mem_used, mem_total = g["mem_used"], g["mem_total"]
@@ -169,6 +253,7 @@ def get_gpu_info_nvidia() -> Optional[GPUInfo]:
                 temperature_c=g["temp"],
                 power_w=g["power_w"],
                 gpu_backend="nvidia",
+                processes=procs,
             )
 
         # Multi-GPU: aggregate across all GPUs
@@ -199,6 +284,7 @@ def get_gpu_info_nvidia() -> Optional[GPUInfo]:
             temperature_c=max_temp,
             power_w=total_power,
             gpu_backend="nvidia",
+            processes=procs,
         )
     except (ValueError, IndexError):
         pass
