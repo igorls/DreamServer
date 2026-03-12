@@ -250,27 +250,30 @@ describe('useModels', () => {
       expect(result.current.loading).toBe(false)
     })
 
-    // Simulate slow download
+    // Simulate a slow download
     let resolveDownload
-    global.fetch = vi.fn().mockImplementation(() => 
-      new Promise(resolve => {
-        resolveDownload = resolve
-      })
-    )
+    const downloadPromise = new Promise(resolve => {
+      resolveDownload = resolve
+    })
 
+    // Set up fetch to return a pending promise
+    global.fetch = vi.fn().mockImplementation(() => downloadPromise)
+
+    // Trigger download - don't await yet
+    let downloadComplete = false
     act(() => {
-      result.current.downloadModel('model-1')
+      void result.current.downloadModel('model-1')
     })
 
     // Should be loading immediately after calling download
     expect(result.current.actionLoading).toBe('model-1')
 
-    // Resolve the download
-    await act(async () => {
-      resolveDownload({ ok: true, json: async () => ({}) })
-    })
+    // Now resolve the download
+    resolveDownload({ ok: true, json: async () => ({}) })
 
-    expect(result.current.actionLoading).toBeNull()
+    await waitFor(() => {
+      expect(result.current.actionLoading).toBeNull()
+    })
   })
 
   it('should abort pending fetch on unmount', async () => {
