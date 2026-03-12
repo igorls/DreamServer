@@ -29,23 +29,44 @@ export function useVoiceAgent() {
   
   // Refs
   const roomRef = useRef(null)
-  const audioContextRef = useRef(null)
   const mediaStreamRef = useRef(null)
-  const audioElementRef = useRef(null)
   const audioElementsRef = useRef([]) // Track all audio elements for cleanup
+  const abortControllerRef = useRef(null)
+
+  // Helper to clean up audio elements
+  const cleanupAudioElements = useCallback(() => {
+    audioElementsRef.current.forEach(el => {
+      try {
+        if (el && el.parentNode) {
+          el.parentNode.removeChild(el)
+        }
+        // Also pause and release the element
+        if (el instanceof HTMLAudioElement) {
+          el.pause()
+          el.srcObject = null
+        }
+      } catch {
+        // Ignore errors during cleanup
+      }
+    })
+    audioElementsRef.current = []
+  }, [])
 
   // Get LiveKit token from backend
-  const getToken = useCallback(async () => {
+  const getToken = useCallback(async (signal) => {
     try {
       const response = await fetch(`${API_BASE}/api/voice/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identity: `dashboard-${Date.now()}` })
+        body: JSON.stringify({ identity: `dashboard-${Date.now()}` }),
+        signal,
       })
       if (!response.ok) throw new Error('Failed to get token')
       const data = await response.json()
       return data.token
     } catch (err) {
+      // Don't throw on abort
+      if (err.name === 'AbortError') return null
       console.error('Token error:', err)
       throw err
     }
@@ -53,6 +74,14 @@ export function useVoiceAgent() {
 
   // Connect to LiveKit room
   const connect = useCallback(async () => {
+    // Cancel any previous connection attempt
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+
     try {
       setStatus('connecting')
       setError(null)
@@ -60,7 +89,8 @@ export function useVoiceAgent() {
       // Dynamic import of LiveKit SDK
       const { Room, RoomEvent, Track, createLocalAudioTrack } = await import('livekit-client')
 
-      const token = await getToken()
+      const token = await getToken(abortController.signal)
+      if (!token) return // Aborted
       
       const room = new Room({
         adaptiveStream: true,
@@ -85,8 +115,8 @@ export function useVoiceAgent() {
           const audioElement = track.attach()
           audioElement.volume = volume
           document.body.appendChild(audioElement)
-          audioElementRef.current = audioElement
-          audioElementsRef.current.push(audioElement) // Track for cleanup
+          audioElementsRef.current.push(audioElement)
+          audioElementRef.current = audioElement // Keep ref for volume control
           setIsSpeaking(true)
         }
       })
@@ -94,6 +124,18 @@ export function useVoiceAgent() {
       room.on(RoomEvent.TrackUnsubscribed, (track) => {
         if (track.kind === Track.Kind.Audio) {
           track.detach()
+          // Remove from tracked elements
+          audioElementsRef.current = audioElementsRef.current.filter(el => {
+            // Try to remove from DOM if still there
+            try {
+              if (el && el.parentNode) {
+                el.parentNode.removeChild(el)
+              }
+            } catch {
+              // Ignore
+            }
+            return false // Remove all from array since we're detaching
+          })
           setIsSpeaking(false)
         }
       })
@@ -123,6 +165,9 @@ export function useVoiceAgent() {
         }
       })
 
+      // Check if aborted before connecting
+      if (abortController.signal.aborted) return
+
       // Connect to room
       await room.connect(LIVEKIT_URL, token)
       roomRef.current = room
@@ -137,6 +182,8 @@ export function useVoiceAgent() {
       mediaStreamRef.current = audioTrack.mediaStream
 
     } catch (err) {
+      // Don't set error state if aborted
+      if (err.name === 'AbortError') return
       console.error('Connection error:', err)
       setError(err.message)
       setStatus('error')
@@ -145,8 +192,18 @@ export function useVoiceAgent() {
 
   // Disconnect from room
   const disconnect = useCallback(async () => {
+    // Abort any pending connection
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+
     if (roomRef.current) {
-      await roomRef.current.disconnect()
+      try {
+        await roomRef.current.disconnect()
+      } catch {
+        // Ignore errors during disconnect
+      }
       roomRef.current = null
     }
     if (mediaStreamRef.current) {
@@ -154,16 +211,11 @@ export function useVoiceAgent() {
       mediaStreamRef.current = null
     }
     // Clean up all audio elements from DOM
-    audioElementsRef.current.forEach(el => {
-      if (el && el.parentNode) {
-        el.parentNode.removeChild(el)
-      }
-    })
-    audioElementsRef.current = []
+    cleanupAudioElements()
     audioElementRef.current = null
     setStatus('disconnected')
     setIsListening(false)
-  }, [])
+  }, [cleanupAudioElements])
 
   // Toggle listening (mute/unmute local audio)
   const toggleListening = useCallback(async () => {
@@ -194,9 +246,12 @@ export function useVoiceAgent() {
   const toggleMute = useCallback(() => {
     setIsMuted(prev => {
       const newMuted = !prev
-      if (audioElementRef.current) {
-        audioElementRef.current.muted = newMuted
-      }
+      // Apply to all audio elements
+      audioElementsRef.current.forEach(el => {
+        if (el instanceof HTMLAudioElement) {
+          el.muted = newMuted
+        }
+      })
       return newMuted
     })
   }, [])
@@ -204,9 +259,12 @@ export function useVoiceAgent() {
   // Update volume
   const updateVolume = useCallback((newVolume) => {
     setVolume(newVolume)
-    if (audioElementRef.current) {
-      audioElementRef.current.volume = newVolume
-    }
+    // Apply to all audio elements
+    audioElementsRef.current.forEach(el => {
+      if (el instanceof HTMLAudioElement) {
+        el.volume = newVolume
+      }
+    })
   }, [])
 
   // Interrupt (stop AI speaking)
@@ -230,6 +288,10 @@ export function useVoiceAgent() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      // Cancel any pending connection
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
       disconnect()
     }
   }, [disconnect])

@@ -14,12 +14,18 @@ export function useModels() {
   const [actionLoading, setActionLoading] = useState(null)
   const [filter, setFilter] = useState('all')
 
-  const fetchModels = useCallback(async () => {
+  // Abort controller for cancelling pending fetches on unmount
+  const abortControllerRef = useRef(null)
+
+  const fetchModels = useCallback(async (signal) => {
     try {
       const [modelsRes, activeRes] = await Promise.all([
-        fetch('/api/models'),
-        fetch('/api/models/active'),
+        fetch('/api/models', { signal }),
+        fetch('/api/models/active', { signal }),
       ])
+
+      // Check if request was aborted
+      if (signal?.aborted) return
 
       if (!modelsRes.ok) throw new Error('Failed to fetch models')
       const modelsData = await modelsRes.json()
@@ -34,16 +40,30 @@ export function useModels() {
 
       setError(null)
     } catch (err) {
+      // Don't set error if request was aborted
+      if (err.name === 'AbortError') return
       setError(err.message)
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) {
+        setLoading(false)
+      }
     }
   }, [])
 
   useEffect(() => {
-    fetchModels()
-    const interval = setInterval(fetchModels, 30000)
-    return () => clearInterval(interval)
+    // Create new abort controller for this effect
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+
+    fetchModels(abortController.signal)
+    const interval = setInterval(() => {
+      fetchModels(abortController.signal)
+    }, 30000)
+
+    return () => {
+      abortController.abort()
+      clearInterval(interval)
+    }
   }, [fetchModels])
 
   // Filter models by backend type
