@@ -3,7 +3,7 @@ import {
   Box, Download, Trash2, Check, AlertCircle, Loader2, Play,
   RefreshCw, HardDrive, Zap, Cloud, Server, ChevronDown,
   Eye, EyeOff, ExternalLink, X, Sparkles, Search, Info,
-  AlertTriangle, Plus, Square, Upload
+  AlertTriangle, Plus, Square, Upload, ArrowUpDown
 } from 'lucide-react'
 import { useModels, useProviders, useOllama } from '../hooks/useModels'
 import { useDownloadProgress } from '../hooks/useDownloadProgress'
@@ -52,6 +52,9 @@ export default function Models() {
   // Search state
   const [search, setSearch] = useState('')
 
+  // Sort state
+  const [sort, setSort] = useState('name-asc')
+
   // Add custom model form
   const [showAddForm, setShowAddForm] = useState(false)
 
@@ -75,17 +78,47 @@ export default function Models() {
     showToast('Model deleted successfully')
   }, [confirmDialog, showToast])
 
-  // Filter models by search
+  // Filter and sort models
   const filteredModels = useMemo(() => {
-    if (!search.trim()) return models
-    const q = search.toLowerCase()
-    return models.filter(m =>
-      m.name.toLowerCase().includes(q) ||
-      m.family?.toLowerCase().includes(q) ||
-      m.description?.toLowerCase().includes(q) ||
-      m.specialty?.toLowerCase().includes(q)
-    )
-  }, [models, search])
+    let result = models
+
+    // Search filter
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      result = result.filter(m =>
+        m.name.toLowerCase().includes(q) ||
+        m.family?.toLowerCase().includes(q) ||
+        m.description?.toLowerCase().includes(q) ||
+        m.specialty?.toLowerCase().includes(q)
+      )
+    }
+
+    // Sort
+    const sorted = [...result]
+    switch (sort) {
+      case 'name-asc':
+        sorted.sort((a, b) => a.name.localeCompare(b.name))
+        break
+      case 'name-desc':
+        sorted.sort((a, b) => b.name.localeCompare(a.name))
+        break
+      case 'size-asc':
+        sorted.sort((a, b) => (a.size_gb || 0) - (b.size_gb || 0))
+        break
+      case 'size-desc':
+        sorted.sort((a, b) => (b.size_gb || 0) - (a.size_gb || 0))
+        break
+      case 'vram-asc':
+        sorted.sort((a, b) => (a.vram_required_gb || 0) - (b.vram_required_gb || 0))
+        break
+      case 'vram-desc':
+        sorted.sort((a, b) => (b.vram_required_gb || 0) - (a.vram_required_gb || 0))
+        break
+      default:
+        break
+    }
+    return sorted
+  }, [models, search, sort])
 
   if (loading) {
     return (
@@ -170,25 +203,43 @@ export default function Models() {
         ))}
       </div>
 
-      {/* Search Bar (hidden in cloud tab) */}
+      {/* Search Bar + Sort (hidden in cloud tab) */}
       {filter !== 'cloud' && (
-        <div className="mb-5 relative">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search models by name, family, or specialty..."
-            className="w-full pl-10 pr-4 py-2.5 bg-zinc-900/50 border border-zinc-800 rounded-lg text-sm text-white placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none transition-colors"
-          />
-          {search && (
-            <button
-              onClick={() => setSearch('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
+        <div className="mb-5 flex gap-3">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search models by name, family, or specialty..."
+              className="w-full pl-10 pr-4 py-2.5 bg-zinc-900/50 border border-zinc-800 rounded-lg text-sm text-white placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none transition-colors"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <div className="relative">
+            <ArrowUpDown size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+            <select
+              value={sort}
+              onChange={e => setSort(e.target.value)}
+              className="pl-9 pr-8 py-2.5 bg-zinc-900/50 border border-zinc-800 rounded-lg text-sm text-zinc-300 appearance-none cursor-pointer focus:border-indigo-500 focus:outline-none transition-colors"
             >
-              <X size={14} />
-            </button>
-          )}
+              <option value="name-asc">Name A→Z</option>
+              <option value="name-desc">Name Z→A</option>
+              <option value="size-asc">Size ↑</option>
+              <option value="size-desc">Size ↓</option>
+              <option value="vram-asc">VRAM ↑</option>
+              <option value="vram-desc">VRAM ↓</option>
+            </select>
+            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+          </div>
         </div>
       )}
 

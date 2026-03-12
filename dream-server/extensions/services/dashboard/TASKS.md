@@ -23,7 +23,7 @@
 
 | ID | Task | Priority | Status | Assignee | Notes |
 |----|------|----------|--------|----------|-------|
-| C1 | Add unit tests for `useModels` hook | 🔴 | ✅ | | Jest/Vitest setup needed |
+| C1 | Add unit tests for `useModels` hook | 🔴 | ✅ | | Vitest + Testing Library |
 | C2 | Add unit tests for `useSystemStatus` hook | 🔴 | ✅ | | |
 | C3 | Add unit tests for `useDownloadProgress` hook | 🔴 | ✅ | | |
 | C4 | Add CI/CD test integration | 🔴 | ⬜ | | GitHub Actions workflow |
@@ -48,7 +48,7 @@
 |----|------|----------|--------|----------|-------|
 | M1 | Memoize `sortBySeverity` in Dashboard.jsx | 🟡 | ✅ | | Use `useMemo` with WeakMap |
 | M2 | Memoize `computeHealth` in Dashboard.jsx | 🟡 | ✅ | | Use `useMemo` with WeakMap |
-| M3 | Add virtualization to Models list | 🟡 | ⬜ | | Use `react-window` |
+| M3 | Add virtualization to Models list | 🟡 | 🔄 | | Use `react-window` |
 | M4 | Memoize `getInternalRoutes` result in App.jsx | 🟡 | ✅ | | |
 
 ### Accessibility
@@ -80,7 +80,7 @@
 |----|------|----------|--------|----------|-------|
 | L1 | Migrate to TypeScript | 🟢 | ⬜ | | Large effort |
 | L2 | Add Storybook | 🟢 | ⬜ | | Component documentation |
-| L3 | Extract magic numbers to constants | 🟢 | ⬜ | | Poll intervals, etc. |
+| L3 | Extract magic numbers to constants | 🟢 | ✅ | | `src/constants.js` |
 | L4 | Fix `handleCheckUpdates` or remove button | 🟢 | ⬜ | | Settings page |
 
 ### Features
@@ -94,7 +94,7 @@
 | L9 | Add batch model download | 🟢 | ⬜ | | Models page |
 | L10 | Implement backup/restore in Settings | 🟢 | ⬜ | | |
 | L11 | Add voice conversation history persistence | 🟢 | ⬜ | | Voice page |
-| L12 | Fix duplicate FeatureDiscoveryBanner | 🟢 | ⬜ | | Dashboard.jsx |
+| L12 | Fix duplicate FeatureDiscoveryBanner | 🟢 | ✅ | | Dashboard.jsx |
 
 ### Configuration
 
@@ -121,10 +121,10 @@
 | Priority | Total | Done | In Progress | Todo |
 |----------|-------|------|-------------|------|
 | Critical | 9 | 9 | 0 | 0 |
-| Medium | 13 | 4 | 0 | 9 |
-| Low | 15 | 0 | 0 | 15 |
+| Medium | 13 | 5 | 1 | 7 |
+| Low | 15 | 2 | 0 | 13 |
 | Docs | 3 | 0 | 0 | 3 |
-| **Total** | **40** | **13** | **0** | **27** |
+| **Total** | **40** | **16** | **1** | **23** |
 
 ---
 
@@ -136,3 +136,5 @@
 | 2026-03-12 | Completed: C1-C9 (Testing infrastructure + Critical bug fixes) |
 | 2026-03-12 | Completed: M1-M4 (Performance optimizations) |
 | 2026-03-12 | Completed: M10-M11 (Global toast and confirm contexts) |
+| 2026-03-12 | Completed: L3, L12 (Constants extraction + duplicate banner fix) |
+| 2026-03-12 | Merged upstream changes from origin/main |
