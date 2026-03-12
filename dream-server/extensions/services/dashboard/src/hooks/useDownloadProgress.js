@@ -1,17 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 
+const DEFAULT_POLL_INTERVAL_MS = 1500
+
 /**
  * Hook to poll download progress during model downloads.
  * Only polls when a download is active — no idle polling.
  */
-export function useDownloadProgress(pollIntervalMs = 1500) {
+export function useDownloadProgress(pollIntervalMs = DEFAULT_POLL_INTERVAL_MS) {
   const [progress, setProgress] = useState(null)
   const [isDownloading, setIsDownloading] = useState(false)
   const pollRef = useRef(null)
+  const abortControllerRef = useRef(null)
 
-  const fetchProgress = useCallback(async () => {
+  const fetchProgress = useCallback(async (signal) => {
     try {
-      const response = await fetch('/api/models/download-status')
+      const response = await fetch('/api/models/download-status', { signal })
       if (!response.ok) return
 
       const data = await response.json()
@@ -48,6 +51,8 @@ export function useDownloadProgress(pollIntervalMs = 1500) {
         }
       }
     } catch (err) {
+      // Don't set error state if request was aborted
+      if (err.name === 'AbortError') return
       // Silently fail - API might not be available
     }
   }, [])
@@ -55,15 +60,32 @@ export function useDownloadProgress(pollIntervalMs = 1500) {
   // Start polling — call this when a download begins
   const startPolling = useCallback(() => {
     if (pollRef.current) return // Already polling
-    fetchProgress() // Immediate first check
-    pollRef.current = setInterval(fetchProgress, pollIntervalMs)
+    
+    // Create abort controller for this polling session
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+    
+    fetchProgress(abortController.signal) // Immediate first check
+    pollRef.current = setInterval(() => {
+      if (!abortController.signal.aborted) {
+        fetchProgress(abortController.signal)
+      }
+    }, pollIntervalMs)
   }, [fetchProgress, pollIntervalMs])
 
   // Do a single check on mount to catch in-progress downloads
   useEffect(() => {
-    fetchProgress()
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+    
+    fetchProgress(abortController.signal)
+    
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current)
+      abortController.abort()
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
     }
   }, [fetchProgress])
 

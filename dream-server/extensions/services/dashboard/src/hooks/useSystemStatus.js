@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 const POLL_INTERVAL = 5000 // 5 seconds
 
-// Mock data for development/demo - gated behind VITE_USE_MOCK_DATA env var
+// Build-time constant for mock data (not runtime check)
+// Set VITE_USE_MOCK_DATA=true in .env for development with mock data
 const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true'
 
 // Mock data for development/demo
@@ -40,42 +41,65 @@ const MOCK_STATUS = getMockStatus()
 // Named export for dev-only mocking (explicit opt-in via VITE_USE_MOCK_DATA)
 export { getMockStatus }
 
+const DEFAULT_STATUS = {
+  gpu: null,
+  services: [],
+  model: null,
+  bootstrap: null,
+  uptime: 0
+}
+
 export function useSystemStatus() {
-  const [status, setStatus] = useState(USE_MOCK_DATA ? MOCK_STATUS : {
-    gpu: null,
-    services: [],
-    model: null,
-    bootstrap: null,
-    uptime: 0
-  })
+  const [status, setStatus] = useState(USE_MOCK_DATA ? MOCK_STATUS : DEFAULT_STATUS)
   const [loading, setLoading] = useState(!USE_MOCK_DATA)
   const [error, setError] = useState(null)
 
-  useEffect(() => {
-    const fetchStatus = async () => {
-      // If using mock data, don't attempt API call
-      if (USE_MOCK_DATA) {
-        setLoading(false)
-        return
-      }
+  // Abort controller for cancelling pending fetches on unmount
+  const abortControllerRef = useRef(null)
 
+  useEffect(() => {
+    // If using mock data, don't attempt API call
+    if (USE_MOCK_DATA) {
+      setLoading(false)
+      return
+    }
+
+    const fetchStatus = async (signal) => {
       try {
-        const response = await fetch('/api/status')
+        const response = await fetch('/api/status', { signal })
+        
+        // Check if request was aborted
+        if (signal?.aborted) return
+        
         if (!response.ok) throw new Error('Failed to fetch status')
         const data = await response.json()
         setStatus(data)
         setError(null)
       } catch (err) {
+        // Don't set error if request was aborted
+        if (err.name === 'AbortError') return
         setError(err.message)
         // No silent fallback - let error propagate to UI
       } finally {
-        setLoading(false)
+        if (!signal?.aborted) {
+          setLoading(false)
+        }
       }
     }
 
-    fetchStatus()
-    const interval = setInterval(fetchStatus, POLL_INTERVAL)
-    return () => clearInterval(interval)
+    // Create new abort controller for this effect
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+
+    fetchStatus(abortController.signal)
+    const interval = setInterval(() => {
+      fetchStatus(abortController.signal)
+    }, POLL_INTERVAL)
+
+    return () => {
+      abortController.abort()
+      clearInterval(interval)
+    }
   }, [])
 
   return { status, loading, error }

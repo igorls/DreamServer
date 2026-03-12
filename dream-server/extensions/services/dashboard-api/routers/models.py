@@ -279,10 +279,6 @@ async def list_models(api_key: str = Depends(verify_api_key)):
 
     models = []
     for entry in catalog.get("models", []):
-        # Only include catalog models for the configured backend
-        entry_backends = entry.get("backends", ["llama-server"])
-        if llm_backend not in entry_backends and llm_backend != "llama-server":
-            continue
 
         gguf_info = entry.get("gguf", {})
         filename = gguf_info.get("filename", "")

@@ -72,6 +72,7 @@ export default function Settings() {
   }
 
   const handleExportConfig = async () => {
+    let blobUrl = null
     try {
       const data = statusCache || (await (await fetchJson(`${API_BASE}/api/status`)).json())
       const config = {
@@ -83,15 +84,19 @@ export default function Settings() {
         model: data.model
       }
       const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
+      blobUrl = URL.createObjectURL(blob)
       const a = document.createElement('a')
-      a.href = url
+      a.href = blobUrl
       a.download = `dream-server-config-${new Date().toISOString().slice(0,10)}.json`
       a.click()
-      URL.revokeObjectURL(url)
       setNotice({ type: 'info', text: 'Configuration exported.' })
     } catch (err) {
       setNotice({ type: 'danger', text: 'Export failed: ' + err.message })
+    } finally {
+      // Always revoke blob URL to prevent memory leak
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl)
+      }
     }
   }
 

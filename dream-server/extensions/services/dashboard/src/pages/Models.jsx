@@ -525,11 +525,16 @@ function ModelCard({ model, isLoading, onDownload, onLoad, onDelete }) {
               Active
             </span>
           ) : model.backend === 'ollama' ? (
-            /* Ollama models are managed by Ollama — show Ready + Delete */
+            /* Ollama models — Load (VRAM warm) + Delete */
             <>
-              <span className="px-4 py-2 bg-indigo-600/15 text-indigo-400 rounded-lg text-sm font-medium border border-indigo-500/20">
-                Ready
-              </span>
+              <button
+                onClick={onLoad}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30"
+                title="Load model into VRAM"
+              >
+                <Play size={14} />
+                Load
+              </button>
               <button
                 onClick={onDelete}
                 className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
