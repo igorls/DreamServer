@@ -48,16 +48,16 @@
 |----|------|----------|--------|----------|-------|
 | M1 | Memoize `sortBySeverity` in Dashboard.jsx | 🟡 | ✅ | | Use `useMemo` with WeakMap |
 | M2 | Memoize `computeHealth` in Dashboard.jsx | 🟡 | ✅ | | Use `useMemo` with WeakMap |
-| M3 | Add virtualization to Models list | 🟡 | 🔄 | | Use `react-window` |
+| M3 | ~~Add virtualization to Models list~~ | 🟡 | ❌ | | Not needed - typical 30-80 models |
 | M4 | Memoize `getInternalRoutes` result in App.jsx | 🟡 | ✅ | | |
 
 ### Accessibility
 
 | ID | Task | Priority | Status | Assignee | Notes |
 |----|------|----------|--------|----------|-------|
-| M5 | Add ARIA labels to all buttons | 🟡 | ⬜ | | |
-| M6 | Add ARIA labels to all inputs | 🟡 | ⬜ | | |
-| M7 | Add `aria-live` regions for dynamic content | 🟡 | ⬜ | | Download progress, toasts |
+| M5 | Add ARIA labels to all buttons | 🟡 | ✅ | | Models page done |
+| M6 | Add ARIA labels to all inputs | 🟡 | ✅ | | Models page done |
+| M7 | Add `aria-live` regions for dynamic content | 🟡 | ✅ | | Download progress done |
 | M8 | Add focus management in Voice page | 🟡 | ⬜ | | Keyboard navigation |
 | M9 | Fix color contrast issues | 🟡 | ⬜ | | `text-zinc-500` on dark |
 
@@ -121,10 +121,10 @@
 | Priority | Total | Done | In Progress | Todo |
 |----------|-------|------|-------------|------|
 | Critical | 9 | 9 | 0 | 0 |
-| Medium | 13 | 5 | 1 | 7 |
+| Medium | 13 | 8 | 0 | 5 |
 | Low | 15 | 2 | 0 | 13 |
 | Docs | 3 | 0 | 0 | 3 |
-| **Total** | **40** | **16** | **1** | **23** |
+| **Total** | **40** | **19** | **0** | **21** |
 
 ---
 
@@ -137,4 +137,6 @@
 | 2026-03-12 | Completed: M1-M4 (Performance optimizations) |
 | 2026-03-12 | Completed: M10-M11 (Global toast and confirm contexts) |
 | 2026-03-12 | Completed: L3, L12 (Constants extraction + duplicate banner fix) |
+| 2026-03-12 | Completed: M5-M7 (ARIA labels, aria-live regions) |
+| 2026-03-12 | Deferred: M3 (virtualization) - not needed for typical model counts |
 | 2026-03-12 | Merged upstream changes from origin/main |

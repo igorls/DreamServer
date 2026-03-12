@@ -150,6 +150,7 @@ export default function Models() {
         <button
           onClick={refresh}
           className="p-2.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+          aria-label="Refresh models list"
           title="Refresh"
         >
           <RefreshCw size={20} />
@@ -187,11 +188,14 @@ export default function Models() {
       {gpu && <VramMeter gpu={gpu} />}
 
       {/* Filter Tabs */}
-      <div className="mb-6 flex items-center gap-1 bg-zinc-900/50 border border-zinc-800 rounded-lg p-1">
+      <div className="mb-6 flex items-center gap-1 bg-zinc-900/50 border border-zinc-800 rounded-lg p-1" role="tablist" aria-label="Filter models by backend">
         {FILTER_TABS.map(tab => (
           <button
             key={tab.id}
             onClick={() => setFilter(tab.id)}
+            role="tab"
+            aria-selected={filter === tab.id}
+            aria-controls={`models-panel-${tab.id}`}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
               filter === tab.id
                 ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
@@ -207,28 +211,31 @@ export default function Models() {
       {filter !== 'cloud' && (
         <div className="mb-5 flex gap-3">
           <div className="relative flex-1">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" aria-hidden="true" />
             <input
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search models by name, family, or specialty..."
+              aria-label="Search models"
               className="w-full pl-10 pr-4 py-2.5 bg-zinc-900/50 border border-zinc-800 rounded-lg text-sm text-white placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none transition-colors"
             />
             {search && (
               <button
                 onClick={() => setSearch('')}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
+                aria-label="Clear search"
               >
                 <X size={14} />
               </button>
             )}
           </div>
           <div className="relative">
-            <ArrowUpDown size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+            <ArrowUpDown size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" aria-hidden="true" />
             <select
               value={sort}
               onChange={e => setSort(e.target.value)}
+              aria-label="Sort models"
               className="pl-9 pr-8 py-2.5 bg-zinc-900/50 border border-zinc-800 rounded-lg text-sm text-zinc-300 appearance-none cursor-pointer focus:border-indigo-500 focus:outline-none transition-colors"
             >
               <option value="name-asc">Name A→Z</option>
@@ -238,7 +245,7 @@ export default function Models() {
               <option value="vram-asc">VRAM ↑</option>
               <option value="vram-desc">VRAM ↓</option>
             </select>
-            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" aria-hidden="true" />
           </div>
         </div>
       )}
@@ -764,9 +771,13 @@ function DownloadProgressBar({ progress, helpers }) {
 
   if (progress.error) {
     return (
-      <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
+      <div 
+        className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl"
+        role="alert"
+        aria-live="assertive"
+      >
         <div className="flex items-center gap-3">
-          <AlertCircle size={20} className="text-red-400" />
+          <AlertCircle size={20} className="text-red-400" aria-hidden="true" />
           <div>
             <p className="text-red-400 font-medium">Download Failed</p>
             <p className="text-sm text-red-400/70">{progress.error}</p>
@@ -777,11 +788,16 @@ function DownloadProgressBar({ progress, helpers }) {
   }
 
   return (
-    <div className="mb-6 p-5 bg-indigo-500/10 border border-indigo-500/30 rounded-xl">
+    <div 
+      className="mb-6 p-5 bg-indigo-500/10 border border-indigo-500/30 rounded-xl"
+      role="status"
+      aria-live="polite"
+      aria-label={`Downloading ${progress.model}, ${progress.percent?.toFixed(0) || 0}% complete`}
+    >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <HardDrive size={20} className="text-indigo-400" />
+            <HardDrive size={20} className="text-indigo-400" aria-hidden="true" />
             <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-indigo-400 rounded-full animate-pulse" />
           </div>
           <div>
@@ -793,12 +809,12 @@ function DownloadProgressBar({ progress, helpers }) {
             </p>
           </div>
         </div>
-        <span className="text-2xl font-bold text-indigo-400 font-mono">
+        <span className="text-2xl font-bold text-indigo-400 font-mono" aria-label={`${progress.percent?.toFixed(0) || 0} percent`}>
           {progress.percent?.toFixed(0) || 0}%
         </span>
       </div>
 
-      <div className="h-3 bg-zinc-700 rounded-full overflow-hidden">
+      <div className="h-3 bg-zinc-700 rounded-full overflow-hidden" role="progressbar" aria-valuenow={progress.percent || 0} aria-valuemin={0} aria-valuemax={100}>
         <div
           className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-300 relative"
           style={{ width: `${progress.percent || 0}%` }}
