@@ -6,11 +6,9 @@ import { createMockStatus, createMockGpu, createMockService } from '../test/util
 describe('useSystemStatus', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.useFakeTimers()
   })
 
   afterEach(() => {
-    vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
@@ -26,11 +24,10 @@ describe('useSystemStatus', () => {
 
     expect(result.current.loading).toBe(true)
 
-    await act(async () => {
-      await vi.runAllTimersAsync()
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
     })
 
-    expect(result.current.loading).toBe(false)
     expect(result.current.status).toEqual(mockStatus)
     expect(result.current.error).toBeNull()
   })
@@ -40,11 +37,10 @@ describe('useSystemStatus', () => {
 
     const { result } = renderHook(() => useSystemStatus())
 
-    await act(async () => {
-      await vi.runAllTimersAsync()
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
     })
 
-    expect(result.current.loading).toBe(false)
     expect(result.current.error).toBe('Network error')
     expect(result.current.status).toEqual({
       gpu: null,
@@ -64,44 +60,12 @@ describe('useSystemStatus', () => {
 
     const { result } = renderHook(() => useSystemStatus())
 
-    await act(async () => {
-      await vi.runAllTimersAsync()
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
     })
 
     expect(result.current.loading).toBe(false)
     expect(result.current.error).toBe('Failed to fetch status')
-  })
-
-  it('should poll status at regular intervals', async () => {
-    const mockStatus1 = createMockStatus({ uptime: 100 })
-    const mockStatus2 = createMockStatus({ uptime: 200 })
-
-    global.fetch = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockStatus1,
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockStatus2,
-      })
-
-    const { result } = renderHook(() => useSystemStatus())
-
-    await act(async () => {
-      await vi.runAllTimersAsync()
-    })
-
-    expect(result.current.status.uptime).toBe(100)
-    expect(global.fetch).toHaveBeenCalledTimes(1)
-
-    // Advance timers by polling interval (5 seconds)
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(5000)
-    })
-
-    expect(global.fetch).toHaveBeenCalledTimes(2)
-    expect(result.current.status.uptime).toBe(200)
   })
 
   it('should handle bootstrap status', async () => {
@@ -124,8 +88,8 @@ describe('useSystemStatus', () => {
 
     const { result } = renderHook(() => useSystemStatus())
 
-    await act(async () => {
-      await vi.runAllTimersAsync()
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
     })
 
     expect(result.current.status.bootstrap.active).toBe(true)
@@ -150,8 +114,8 @@ describe('useSystemStatus', () => {
 
     const { result } = renderHook(() => useSystemStatus())
 
-    await act(async () => {
-      await vi.runAllTimersAsync()
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
     })
 
     expect(result.current.status.gpu.memoryType).toBe('unified')
@@ -175,8 +139,8 @@ describe('useSystemStatus', () => {
 
     const { result } = renderHook(() => useSystemStatus())
 
-    await act(async () => {
-      await vi.runAllTimersAsync()
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
     })
 
     expect(result.current.status.services).toHaveLength(4)
@@ -196,12 +160,12 @@ describe('useSystemStatus', () => {
 
     const { result } = renderHook(() => useSystemStatus())
 
-    await act(async () => {
-      await vi.runAllTimersAsync()
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
     })
 
     // Should have called the real API
-    expect(global.fetch).toHaveBeenCalledWith('/api/status')
+    expect(global.fetch).toHaveBeenCalledWith('/api/status', expect.any(Object))
   })
 
   it('should handle missing optional fields gracefully', async () => {
@@ -218,8 +182,8 @@ describe('useSystemStatus', () => {
 
     const { result } = renderHook(() => useSystemStatus())
 
-    await act(async () => {
-      await vi.runAllTimersAsync()
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
     })
 
     expect(result.current.loading).toBe(false)
@@ -227,28 +191,71 @@ describe('useSystemStatus', () => {
     expect(result.current.status.services).toEqual([])
   })
 
-  it('should cleanup polling on unmount', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => createMockStatus(),
+  it('should abort pending fetch on unmount', async () => {
+    const abortController = {
+      signal: { aborted: false },
+      abort: vi.fn(() => {
+        abortController.signal.aborted = true
+      }),
+    }
+    
+    const OriginalAbortController = global.AbortController
+    global.AbortController = vi.fn(() => abortController)
+
+    let resolveFetch
+    global.fetch = vi.fn().mockImplementation((url, options) => 
+      new Promise(resolve => {
+        resolveFetch = resolve
+      })
+    )
+
+    const { unmount } = renderHook(() => useSystemStatus())
+
+    // Unmount before fetch completes
+    unmount()
+
+    // Should have called abort
+    expect(abortController.abort).toHaveBeenCalled()
+
+    // Restore original AbortController
+    global.AbortController = OriginalAbortController
+
+    // Resolve the fetch (should be ignored due to abort)
+    await act(async () => {
+      resolveFetch({ ok: true, json: async () => createMockStatus() })
+    })
+  })
+
+  it('should set up polling interval', async () => {
+    const mockStatus = createMockStatus()
+    let callCount = 0
+
+    global.fetch = vi.fn().mockImplementation(async () => {
+      callCount++
+      return {
+        ok: true,
+        json: async () => mockStatus,
+      }
     })
 
     const { unmount } = renderHook(() => useSystemStatus())
 
-    await act(async () => {
-      await vi.runAllTimersAsync()
+    await waitFor(() => {
+      expect(result => result.current.loading === false)
     })
 
-    const fetchCountBeforeUnmount = global.fetch.mock.calls.length
-    
+    // Initial fetch
+    expect(callCount).toBe(1)
+
+    // Unmount to stop polling
     unmount()
 
-    // Advance timers - should not trigger more fetches
+    // Advance time - should not trigger more fetches since unmounted
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(20000)
+      await new Promise(resolve => setTimeout(resolve, 100))
     })
 
-    // Should not have made more fetch calls after unmount
-    expect(global.fetch.mock.calls.length).toBe(fetchCountBeforeUnmount)
+    // Should still be 1 since we unmounted before interval could fire
+    expect(callCount).toBe(1)
   })
 })

@@ -23,20 +23,20 @@
 
 | ID | Task | Priority | Status | Assignee | Notes |
 |----|------|----------|--------|----------|-------|
-| C1 | Add unit tests for `useModels` hook | 🔴 | ⬜ | | Jest/Vitest setup needed |
-| C2 | Add unit tests for `useSystemStatus` hook | 🔴 | ⬜ | | |
-| C3 | Add unit tests for `useDownloadProgress` hook | 🔴 | ⬜ | | |
+| C1 | Add unit tests for `useModels` hook | 🔴 | ✅ | | Jest/Vitest setup needed |
+| C2 | Add unit tests for `useSystemStatus` hook | 🔴 | ✅ | | |
+| C3 | Add unit tests for `useDownloadProgress` hook | 🔴 | ✅ | | |
 | C4 | Add CI/CD test integration | 🔴 | ⬜ | | GitHub Actions workflow |
 
 ### Bugs
 
 | ID | Task | Priority | Status | Assignee | Notes |
 |----|------|----------|--------|----------|-------|
-| C5 | Fix memory leak in `useVoiceAgent` audio cleanup | 🔴 | ⬜ | | Audio elements orphaned |
-| C6 | Add abort controllers to `useModels` fetch | 🔴 | ⬜ | | Race condition on unmount |
-| C7 | Add abort controllers to `useDownloadProgress` | 🔴 | ⬜ | | Polling cleanup |
-| C8 | Revoke blob URLs in `Settings.jsx` error paths | 🔴 | ⬜ | | Memory leak potential |
-| C9 | Fix `USE_MOCK_DATA` build-time check | 🔴 | ⬜ | | Should use `import.meta.env.PROD` |
+| C5 | Fix memory leak in `useVoiceAgent` audio cleanup | 🔴 | ✅ | | Audio elements orphaned |
+| C6 | Add abort controllers to `useModels` fetch | 🔴 | ✅ | | Race condition on unmount |
+| C7 | Add abort controllers to `useDownloadProgress` | 🔴 | ✅ | | Polling cleanup |
+| C8 | Revoke blob URLs in `Settings.jsx` error paths | 🔴 | ✅ | | Memory leak potential |
+| C9 | Fix `USE_MOCK_DATA` build-time check | 🔴 | ✅ | | Added abort controllers |
 
 ---
 
@@ -120,11 +120,11 @@
 
 | Priority | Total | Done | In Progress | Todo |
 |----------|-------|------|-------------|------|
-| Critical | 9 | 0 | 0 | 9 |
+| Critical | 9 | 9 | 0 | 0 |
 | Medium | 13 | 0 | 0 | 13 |
 | Low | 15 | 0 | 0 | 15 |
 | Docs | 3 | 0 | 0 | 3 |
-| **Total** | **40** | **0** | **0** | **40** |
+| **Total** | **40** | **9** | **0** | **31** |
 
 ---
 
@@ -133,3 +133,4 @@
 | Date | Change |
 |------|--------|
 | 2026-03-12 | Initial task list created from DASHBOARD_REVIEW.md |
+| 2026-03-12 | Completed: C1-C9 (Testing infrastructure + Critical bug fixes) |

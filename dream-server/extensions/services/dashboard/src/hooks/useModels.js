@@ -19,9 +19,10 @@ export function useModels() {
 
   const fetchModels = useCallback(async (signal) => {
     try {
+      const opts = signal ? { signal } : {}
       const [modelsRes, activeRes] = await Promise.all([
-        fetch('/api/models', { signal }),
-        fetch('/api/models/active', { signal }),
+        fetch('/api/models', opts),
+        fetch('/api/models/active', opts),
       ])
 
       // Check if request was aborted
