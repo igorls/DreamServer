@@ -92,8 +92,6 @@ export function useModels() {
   }
 
   const deleteModel = async (modelId) => {
-    if (!confirm(`Delete ${modelId}? This cannot be undone.`)) return
-
     setActionLoading(modelId)
     try {
       const response = await fetch(`/api/models/${encodeURIComponent(modelId)}`, {
@@ -207,7 +205,6 @@ export function useOllama() {
   }
 
   const deleteOllamaModel = async (modelName) => {
-    if (!confirm(`Delete Ollama model "${modelName}"? This cannot be undone.`)) return false
     setError(null)
     try {
       const res = await fetch(`/api/models/ollama/${encodeURIComponent(modelName)}`, {
