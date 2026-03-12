@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import {
   Box, Download, Trash2, Check, AlertCircle, Loader2, Play,
   RefreshCw, HardDrive, Zap, Cloud, Server, ChevronDown,
-  Eye, EyeOff, ExternalLink, X, Sparkles, Search, Info
+  Eye, EyeOff, ExternalLink, X, Sparkles, Search, Info,
+  AlertTriangle
 } from 'lucide-react'
 import { useModels, useProviders, useOllama } from '../hooks/useModels'
 import { useDownloadProgress } from '../hooks/useDownloadProgress'
@@ -46,6 +47,18 @@ export default function Models() {
     filter, setFilter, downloadModel, loadModel, deleteModel, refresh
   } = useModels()
   const ollama = useOllama()
+
+  // Confirmation dialog state
+  const [confirmDialog, setConfirmDialog] = useState(null)
+
+  const showConfirm = useCallback((title, message, onConfirm) => {
+    setConfirmDialog({ title, message, onConfirm })
+  }, [])
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (confirmDialog?.onConfirm) await confirmDialog.onConfirm()
+    setConfirmDialog(null)
+  }, [confirmDialog])
 
   if (loading) {
     return (
@@ -146,11 +159,19 @@ export default function Models() {
               onLoad={() => loadModel(model.id)}
               onDelete={
                 model.backend === 'ollama'
-                  ? async () => {
-                      const ok = await ollama.deleteOllamaModel(model.id.replace('ollama:', ''))
-                      if (ok) refresh()
-                    }
-                  : () => deleteModel(model.id)
+                  ? () => showConfirm(
+                      'Delete Ollama Model',
+                      `Are you sure you want to delete "${model.name}"? This will remove the model from your local Ollama installation.`,
+                      async () => {
+                        const ok = await ollama.deleteOllamaModel(model.id.replace('ollama:', ''))
+                        if (ok) refresh()
+                      }
+                    )
+                  : () => showConfirm(
+                      'Delete Model',
+                      `Are you sure you want to delete "${model.name}"? This cannot be undone.`,
+                      () => deleteModel(model.id)
+                    )
               }
             />
           ))}
@@ -165,6 +186,79 @@ export default function Models() {
           )}
         </div>
       )}
+
+      {/* Confirmation Dialog */}
+      {confirmDialog && (
+        <ConfirmDialog
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setConfirmDialog(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Confirm Dialog                                                      */
+/* ------------------------------------------------------------------ */
+
+function ConfirmDialog({ title, message, onConfirm, onCancel }) {
+  const [loading, setLoading] = useState(false)
+
+  const handleConfirm = async () => {
+    setLoading(true)
+    try {
+      await onConfirm()
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onCancel}
+      />
+
+      {/* Dialog */}
+      <div className="relative bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl shadow-black/50 p-6 max-w-md w-full mx-4 animate-in fade-in zoom-in-95">
+        <div className="flex items-start gap-4">
+          <div className="p-3 bg-red-500/15 rounded-xl flex-shrink-0">
+            <AlertTriangle size={22} className="text-red-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-lg font-semibold text-white">{title}</h3>
+            <p className="text-sm text-zinc-400 mt-2 leading-relaxed">{message}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 mt-6">
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={loading}
+            className="px-4 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-lg shadow-red-500/20 disabled:opacity-50"
+          >
+            {loading ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Trash2 size={14} />
+            )}
+            Delete
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
