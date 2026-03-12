@@ -25,7 +25,8 @@ if [[ -f "$_FT_DIR/lib/service-registry.sh" ]]; then
     export SCRIPT_DIR="$_FT_DIR"
     . "$_FT_DIR/lib/service-registry.sh"
     sr_load
-    [[ -f "$_FT_DIR/.env" ]] && set -a && . "$_FT_DIR/.env" && set +a
+    [[ -f "$_FT_DIR/lib/safe-env.sh" ]] && . "$_FT_DIR/lib/safe-env.sh"
+    load_env_file "$_FT_DIR/.env"
 fi
 
 # Ensure SERVICE_PORTS exists (may not be set if service-registry is missing)
@@ -137,7 +138,7 @@ test_tts_functional() {
     fi
     
     # Check it's a valid WAV file
-    if ! file "$output_file" | grep -qi "audio\|wav\|riff"; then
+    if ! file "$output_file" | grep -qiE "audio|wav|riff"; then
         warn "TTS output may not be valid WAV: $(file "$output_file")"
         pass "TTS generates audio file ($file_size bytes)"
     else
@@ -234,7 +235,7 @@ test_whisper_functional() {
         return 1
     fi
     
-    if echo "$transcription" | grep -qi "hello\|world"; then
+    if echo "$transcription" | grep -qiE "hello|world"; then
         pass "Whisper transcribes correctly: '$transcription'"
     else
         warn "Whisper transcribed: '$transcription'"

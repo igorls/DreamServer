@@ -106,6 +106,11 @@ else
         OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
         mkdir -p "$OPENCODE_CONFIG_DIR"
         if [[ ! -f "$OPENCODE_CONFIG_DIR/opencode.json" ]]; then
+            # Read OLLAMA_PORT from the .env generated in phase 06
+            # (it's not exported as a shell variable, only written to the file)
+            if [[ -z "${OLLAMA_PORT:-}" && -f "$INSTALL_DIR/.env" ]]; then
+                OLLAMA_PORT=$(grep -m1 '^OLLAMA_PORT=' "$INSTALL_DIR/.env" | cut -d= -f2-)
+            fi
             cat > "$OPENCODE_CONFIG_DIR/opencode.json" <<OPENCODE_EOF
 {
   "\$schema": "https://opencode.ai/config.json",
@@ -115,7 +120,7 @@ else
       "npm": "@ai-sdk/openai-compatible",
       "name": "llama-server (local)",
       "options": {
-        "baseURL": "http://127.0.0.1:${OLLAMA_PORT:-11434}/v1",
+        "baseURL": "http://127.0.0.1:${OLLAMA_PORT:-8080}/v1",
         "apiKey": "no-key"
       },
       "models": {

@@ -112,6 +112,13 @@ list_backups() {
 # Delete specific backup
 delete_backup() {
     local backup_id="$1"
+
+    # Reject path traversal attempts
+    if [[ "$backup_id" == *..* || "$backup_id" == */* || "$backup_id" == *\\* ]]; then
+        log_error "Invalid backup ID: $backup_id"
+        return 1
+    fi
+
     local backup_dir="$BACKUP_ROOT/$backup_id"
 
     if [[ ! -d "$backup_dir" ]]; then
@@ -144,7 +151,7 @@ create_manifest() {
 
     jq -n \
         --arg mv "1.0" \
-        --arg bd "$(date -Iseconds)" \
+        --arg bd "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
         --arg bi "$(basename "$backup_dir")" \
         --arg bt "$backup_type" \
         --arg dv "$version" \

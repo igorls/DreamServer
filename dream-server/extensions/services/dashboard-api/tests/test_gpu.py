@@ -1,8 +1,8 @@
-"""Tests for gpu.py — tier classification and nvidia-smi parsing."""
+"""Tests for gpu.py — tier classification, nvidia-smi parsing, Apple Silicon detection."""
 
 import pytest
 
-from gpu import get_gpu_tier, get_gpu_info_nvidia
+from gpu import get_gpu_tier, get_gpu_info_nvidia, get_gpu_info_apple
 
 
 # --- get_gpu_tier (pure function, no I/O) ---
@@ -82,3 +82,58 @@ class TestGetGpuInfoNvidia:
         monkeypatch.setattr("gpu.run_command", lambda cmd, **kw: (True, "garbage"))
 
         assert get_gpu_info_nvidia() is None
+
+    def test_multi_gpu_aggregation(self, monkeypatch):
+        csv = (
+            "NVIDIA GeForce RTX 4090, 2048, 24564, 35, 62, 285.5\n"
+            "NVIDIA GeForce RTX 4090, 4096, 24564, 50, 70, 300.0"
+        )
+        monkeypatch.setattr("gpu.run_command", lambda cmd, **kw: (True, csv))
+
+        info = get_gpu_info_nvidia()
+        assert info is not None
+        assert "× 2" in info.name
+        assert info.memory_used_mb == 2048 + 4096
+        assert info.memory_total_mb == 24564 * 2
+
+
+# --- get_gpu_info_apple (mock subprocess) ---
+
+
+class TestGetGpuInfoApple:
+
+    def test_returns_none_on_non_darwin(self, monkeypatch):
+        monkeypatch.setattr("gpu.platform.system", lambda: "Linux")
+        assert get_gpu_info_apple() is None
+
+    def test_parses_apple_silicon(self, monkeypatch):
+        monkeypatch.setattr("gpu.platform.system", lambda: "Darwin")
+
+        def mock_run_command(cmd, **kw):
+            if "machdep.cpu.brand_string" in cmd:
+                return True, "Apple M4 Max"
+            if "hw.memsize" in cmd:
+                return True, str(64 * 1024**3)  # 64 GB
+            if cmd == ["vm_stat"]:
+                return True, (
+                    "Mach Virtual Memory Statistics: (page size of 16384 bytes)\n"
+                    "Pages active:                          500000.\n"
+                    "Pages wired down:                      300000.\n"
+                    "Pages occupied by compressor:          100000.\n"
+                )
+            return False, ""
+
+        monkeypatch.setattr("gpu.run_command", mock_run_command)
+
+        info = get_gpu_info_apple()
+        assert info is not None
+        assert info.name == "Apple M4 Max"
+        assert info.memory_total_mb == 64 * 1024
+        assert info.gpu_backend == "apple"
+        assert info.memory_type == "unified"
+        assert info.memory_used_mb > 0
+
+    def test_returns_none_when_sysctl_fails(self, monkeypatch):
+        monkeypatch.setattr("gpu.platform.system", lambda: "Darwin")
+        monkeypatch.setattr("gpu.run_command", lambda cmd, **kw: (False, ""))
+        assert get_gpu_info_apple() is None

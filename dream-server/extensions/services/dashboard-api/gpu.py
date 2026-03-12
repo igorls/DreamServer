@@ -1,10 +1,14 @@
-"""GPU detection and metrics for NVIDIA and AMD GPUs."""
+"""GPU detection and metrics for NVIDIA, AMD, and Apple Silicon GPUs."""
 
+import logging
 import os
+import platform
 import subprocess
 from typing import Optional
 
 from models import GPUInfo
+
+logger = logging.getLogger(__name__)
 
 
 def run_command(cmd: list[str], timeout: int = 5) -> tuple[bool, str]:
@@ -202,12 +206,70 @@ def get_gpu_info_nvidia() -> Optional[GPUInfo]:
     return None
 
 
+def get_gpu_info_apple() -> Optional[GPUInfo]:
+    """Get GPU metrics for Apple Silicon via system_profiler."""
+    if platform.system() != "Darwin":
+        return None
+
+    try:
+        # Get chip name
+        success, chip_output = run_command(["sysctl", "-n", "machdep.cpu.brand_string"])
+        chip_name = chip_output.strip() if success else "Apple Silicon"
+
+        # Get total memory (unified memory on Apple Silicon)
+        success, mem_output = run_command(["sysctl", "-n", "hw.memsize"])
+        if not success:
+            return None
+
+        total_bytes = int(mem_output.strip())
+        total_mb = total_bytes // (1024 * 1024)
+
+        # Estimate used memory from vm_stat
+        used_mb = 0
+        success, vm_output = run_command(["vm_stat"])
+        if success:
+            import re
+            pages = {}
+            for line in vm_output.splitlines():
+                match = re.match(r"(.+?):\s+(\d+)", line)
+                if match:
+                    pages[match.group(1).strip()] = int(match.group(2))
+            page_size = 16384
+            ps_match = re.search(r"page size of (\d+) bytes", vm_output)
+            if ps_match:
+                page_size = int(ps_match.group(1))
+            active = pages.get("Pages active", 0)
+            wired = pages.get("Pages wired down", 0)
+            compressed = pages.get("Pages occupied by compressor", 0)
+            used_mb = (active + wired + compressed) * page_size // (1024 * 1024)
+
+        return GPUInfo(
+            name=chip_name,
+            memory_used_mb=used_mb,
+            memory_total_mb=total_mb,
+            memory_percent=round(used_mb / total_mb * 100, 1) if total_mb > 0 else 0,
+            utilization_percent=0,  # not easily available without IOKit
+            temperature_c=0,
+            power_w=None,
+            memory_type="unified",
+            gpu_backend="apple",
+        )
+    except (ValueError, TypeError) as e:
+        logger.debug("Apple Silicon GPU detection failed: %s", e)
+        return None
+
+
 def get_gpu_info() -> Optional[GPUInfo]:
-    """Get GPU metrics. Tries AMD sysfs first (if GPU_BACKEND=amd), then NVIDIA."""
+    """Get GPU metrics. Tries the configured backend first, then auto-detects."""
     gpu_backend = os.environ.get("GPU_BACKEND", "").lower()
 
     if gpu_backend == "amd":
         info = get_gpu_info_amd()
+        if info:
+            return info
+
+    if gpu_backend == "apple":
+        info = get_gpu_info_apple()
         if info:
             return info
 
@@ -216,7 +278,13 @@ def get_gpu_info() -> Optional[GPUInfo]:
         return info
 
     if gpu_backend != "amd":
-        return get_gpu_info_amd()
+        info = get_gpu_info_amd()
+        if info:
+            return info
+
+    # Auto-detect Apple Silicon if no backend specified and nothing else found
+    if platform.system() == "Darwin":
+        return get_gpu_info_apple()
 
     return None
 

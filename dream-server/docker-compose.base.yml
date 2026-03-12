@@ -19,7 +19,7 @@ services:
       - ./data/models:/models
       - ./config/llama-server/models.ini:/config/models.ini:ro
     ports:
-      - "${OLLAMA_PORT:-11434}:8080"
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:8080"
     command:
       - --model
       - /models/${GGUF_FILE:-Qwen3-8B-Q4_K_M.gguf}
@@ -53,7 +53,7 @@ services:
     environment:
       ENABLE_OLLAMA_API: "false"
       OPENAI_API_BASE_URL: "${LLM_API_URL:-http://llama-server:8080}/v1"
-      OPENAI_API_KEY: "not-needed"
+      OPENAI_API_KEY: ""
       WEBUI_AUTH: "${WEBUI_AUTH:-true}"
       WEBUI_SECRET_KEY: "${WEBUI_SECRET:?Set WEBUI_SECRET in .env}"
       ENABLE_WEB_SEARCH: "true"
@@ -93,19 +93,19 @@ services:
       # ── Speech-to-Text (Whisper) ──
       AUDIO_STT_ENGINE: "openai"
       AUDIO_STT_OPENAI_API_BASE_URL: "http://whisper:8000/v1"
-      AUDIO_STT_OPENAI_API_KEY: "not-needed"
+      AUDIO_STT_OPENAI_API_KEY: ""
       AUDIO_STT_MODEL: "Systran/faster-whisper-base"
       # ── Text-to-Speech (Kokoro) ──
       AUDIO_TTS_ENGINE: "openai"
       AUDIO_TTS_OPENAI_API_BASE_URL: "http://tts:8880/v1"
-      AUDIO_TTS_OPENAI_API_KEY: "not-needed"
+      AUDIO_TTS_OPENAI_API_KEY: ""
       AUDIO_TTS_MODEL: "kokoro"
       AUDIO_TTS_VOICE: "af_heart"
       TZ: "${TIMEZONE:-UTC}"
     volumes:
       - ./data/open-webui:/app/backend/data
     ports:
-      - "${WEBUI_PORT:-3000}:8080"
+      - "127.0.0.1:${WEBUI_PORT:-3000}:8080"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -125,7 +125,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "${DASHBOARD_API_PORT:-3002}:3002"
+      - "127.0.0.1:${DASHBOARD_API_PORT:-3002}:3002"
     security_opt:
       - no-new-privileges:true
     environment:
@@ -175,7 +175,7 @@ services:
     volumes:
       - ./data:/data:ro
     ports:
-      - "${DASHBOARD_PORT:-3001}:3001"
+      - "127.0.0.1:${DASHBOARD_PORT:-3001}:3001"
     deploy:
       resources:
         limits:

@@ -115,7 +115,7 @@ fi
 ai_ok "Docker Desktop running (v${DOCKER_VERSION})"
 
 # Disk space
-test_disk_space "$HOME" 30
+test_disk_space "$INSTALL_DIR" 30
 info_box "Disk free:" "${DISK_FREE_GB} GB"
 if ! $DISK_SUFFICIENT; then
     ai_err "At least ${DISK_REQUIRED_GB} GB free space required. Found ${DISK_FREE_GB} GB."
@@ -196,7 +196,7 @@ elif [[ "$GGUF_FILE" =~ 14B ]]; then
 else
     NEEDED_GB=23
 fi
-test_disk_space "$HOME" "$NEEDED_GB"
+test_disk_space "$INSTALL_DIR" "$NEEDED_GB"
 if ! $DISK_SUFFICIENT; then
     ai_warn "Tier ${SELECTED_TIER} needs ~${NEEDED_GB} GB (model + Docker images). Only ${DISK_FREE_GB} GB free."
     if ! $FORCE; then exit 1; fi
@@ -610,11 +610,14 @@ else
     # ── Start Docker services ──
     chapter "STARTING SERVICES"
     ai "Running: docker compose ${COMPOSE_FLAGS[*]} up -d"
+    set +o pipefail  # pipefail would abort on compose exit before PIPESTATUS is read; capture it first
     docker compose "${COMPOSE_FLAGS[@]}" up -d 2>&1 | while IFS= read -r line; do
         echo "  $line"
     done
+    compose_exit="${PIPESTATUS[0]}"
+    set -o pipefail
 
-    if [[ "${PIPESTATUS[0]}" -ne 0 ]]; then
+    if [[ "$compose_exit" -ne 0 ]]; then
         ai_err "docker compose up failed"
         exit 1
     fi

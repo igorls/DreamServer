@@ -27,7 +27,7 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 # --- Local modules ---
-from config import SERVICES, INSTALL_DIR, DATA_DIR, SIDEBAR_ICONS
+from config import SERVICES, DATA_DIR, SIDEBAR_ICONS
 from models import (
     GPUInfo, ServiceStatus, DiskUsage, ModelInfo, BootstrapStatus,
     FullStatus, PortCheckRequest,
@@ -35,7 +35,7 @@ from models import (
 from security import verify_api_key
 from gpu import get_gpu_info
 from helpers import (
-    check_service_health, get_all_services,
+    get_all_services,
     get_disk_usage, get_model_info, get_bootstrap_status,
     get_uptime, get_cpu_metrics, get_ram_metrics,
     get_llama_metrics, get_loaded_model, get_llama_context_size,
@@ -123,7 +123,7 @@ async def preflight_docker():
         return {"available": False, "error": "Docker not installed"}
     except subprocess.TimeoutExpired:
         return {"available": False, "error": "Docker check timed out"}
-    except Exception as e:
+    except Exception:
         logger.exception("Docker preflight check failed")
         return {"available": False, "error": "Docker check failed"}
 
@@ -167,11 +167,10 @@ async def preflight_ports(request: PortCheckRequest):
 
     conflicts = []
     for port in request.ports:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1)
         try:
-            sock.bind(("0.0.0.0", port))
-            sock.close()
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(1)
+                sock.bind(("0.0.0.0", port))
         except socket.error:
             conflicts.append({"port": port, "service": port_services.get(port, "Unknown"), "in_use": True})
     return {"conflicts": conflicts, "available": len(conflicts) == 0}
@@ -184,7 +183,7 @@ async def preflight_disk():
         check_path = DATA_DIR if os.path.exists(DATA_DIR) else Path.home()
         usage = shutil.disk_usage(check_path)
         return {"free": usage.free, "total": usage.total, "used": usage.used, "path": str(check_path)}
-    except Exception as e:
+    except Exception:
         logger.exception("Disk preflight check failed")
         return {"error": "Disk check failed", "free": 0, "total": 0, "used": 0, "path": ""}
 
@@ -235,21 +234,45 @@ async def status(api_key: str = Depends(verify_api_key)):
 
 @app.get("/api/status")
 async def api_status(api_key: str = Depends(verify_api_key)):
-    """Dashboard-compatible status endpoint."""
+    """Dashboard-compatible status endpoint.
+
+    Wrapped in a top-level try/except so that a transient failure in any
+    sub-call (GPU, health checks, llama metrics …) never returns a raw 500
+    to the dashboard — the frontend would flash "0/17" otherwise.
+    """
+    try:
+        return await _build_api_status()
+    except Exception:
+        logger.exception("/api/status handler failed — returning safe fallback")
+        return {
+            "gpu": None, "services": [], "model": None,
+            "bootstrap": None, "uptime": 0,
+            "version": app.version, "tier": "Unknown",
+            "cpu": {"percent": 0, "temp_c": None},
+            "ram": {"used_gb": 0, "total_gb": 0, "percent": 0},
+            "inference": {"tokensPerSecond": 0, "lifetimeTokens": 0,
+                          "loadedModel": None, "contextSize": None},
+        }
+
+
+async def _build_api_status() -> dict:
+    """Build the full status payload.
+
+    Resolves the loaded model name *once* and threads it through the
+    metrics and context-size helpers to avoid redundant HTTP round-trips
+    to llama-server (previously 5 sequential calls, now 3 parallel).
+    """
     gpu_info = get_gpu_info()
     service_statuses = await get_all_services()
     model_info = get_model_info()
     bootstrap_info = get_bootstrap_status()
 
-    # Only query llama-server metrics when it's the active backend
-    from routers.models import _get_llm_backend
-    llm_backend = _get_llm_backend()
-    if llm_backend == "llama-server":
-        llama_metrics_data, loaded_model, context_size = await asyncio.gather(
-            get_llama_metrics(), get_loaded_model(), get_llama_context_size(),
-        )
-    else:
-        llama_metrics_data, loaded_model, context_size = {}, None, None
+    # Resolve the loaded model name once, then fan it out.
+    loaded_model = await get_loaded_model()
+    llama_metrics_data, context_size = await asyncio.gather(
+        get_llama_metrics(model_hint=loaded_model),
+        get_llama_context_size(model_hint=loaded_model),
+    )
 
     gpu_data = None
     if gpu_info:

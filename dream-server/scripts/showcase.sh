@@ -24,7 +24,8 @@ if [[ -f "$DREAM_DIR/lib/service-registry.sh" ]]; then
     export SCRIPT_DIR="$DREAM_DIR"
     . "$DREAM_DIR/lib/service-registry.sh"
     sr_load
-    [[ -f "$DREAM_DIR/.env" ]] && set -a && . "$DREAM_DIR/.env" && set +a
+    [[ -f "$DREAM_DIR/lib/safe-env.sh" ]] && . "$DREAM_DIR/lib/safe-env.sh"
+    load_env_file "$DREAM_DIR/.env"
 fi
 
 # URLs — resolved from registry

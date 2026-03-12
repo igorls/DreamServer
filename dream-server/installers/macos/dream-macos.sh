@@ -402,30 +402,22 @@ cmd_chat() {
         return
     fi
 
-    local body
-    body=$(cat <<CHATEOF
-{"model":"default","messages":[{"role":"user","content":"${message}"}]}
-CHATEOF
-    )
+    # Use jq to safely construct JSON payload (prevents injection)
+    local payload
+    payload=$(jq -n --arg msg "$message" \
+        '{model: "default", messages: [{role: "user", content: $msg}], max_tokens: 500}')
 
     local response
     response=$(curl -sf -X POST "http://localhost:8080/v1/chat/completions" \
         -H "Content-Type: application/json" \
-        -d "$body" 2>/dev/null) || {
+        -d "$payload" 2>/dev/null) || {
         ai_err "Chat request failed."
         ai "Is llama-server running? Try: ./dream-macos.sh status"
         return
     }
 
     echo ""
-    echo "$response" | python3 -c "
-import sys, json
-try:
-    d = json.load(sys.stdin)
-    print(d['choices'][0]['message']['content'])
-except Exception as e:
-    print(f'Error parsing response: {e}', file=sys.stderr)
-" 2>/dev/null || echo "$response"
+    echo "$response" | jq -r '.choices[0].message.content // .error.message // "Error: no response"'
     echo ""
 }
 

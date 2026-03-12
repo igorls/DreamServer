@@ -1,10 +1,12 @@
-"""Tests for helpers.py — model info, bootstrap status, token tracking."""
+"""Tests for helpers.py — model info, bootstrap status, token tracking, system metrics."""
 
 import json
 
-import pytest
 
-from helpers import get_model_info, get_bootstrap_status, _update_lifetime_tokens
+from helpers import (
+    get_model_info, get_bootstrap_status, _update_lifetime_tokens,
+    get_uptime, get_cpu_metrics, get_ram_metrics,
+)
 from models import BootstrapStatus
 
 
@@ -152,3 +154,61 @@ class TestUpdateLifetimeTokens:
         result = _update_lifetime_tokens(50.0)
         # Should add 50 (treats reset counter as fresh delta)
         assert result == 550  # 500 + 50
+
+    def test_handles_corrupted_token_file(self, data_dir):
+        """Corrupted JSON should log a warning and start fresh."""
+        token_file = data_dir / "token_counter.json"
+        token_file.write_text("not valid json{{{")
+        result = _update_lifetime_tokens(100.0)
+        assert result == 100
+
+    def test_handles_unwritable_token_file(self, data_dir, monkeypatch):
+        """When the token file cannot be written, should not raise."""
+        import helpers
+        monkeypatch.setattr(helpers, "_TOKEN_FILE", data_dir / "readonly" / "token.json")
+        # Parent dir doesn't exist, so write will fail
+        result = _update_lifetime_tokens(50.0)
+        assert result == 50
+
+
+# --- System metrics (cross-platform) ---
+
+
+class TestGetUptime:
+
+    def test_returns_int(self):
+        result = get_uptime()
+        assert isinstance(result, int)
+        assert result >= 0
+
+    def test_returns_zero_on_unsupported_platform(self, monkeypatch):
+        monkeypatch.setattr("helpers.platform.system", lambda: "UnknownOS")
+        assert get_uptime() == 0
+
+
+class TestGetCpuMetrics:
+
+    def test_returns_expected_keys(self):
+        result = get_cpu_metrics()
+        assert "percent" in result
+        assert "temp_c" in result
+        assert isinstance(result["percent"], (int, float))
+
+    def test_returns_defaults_on_unsupported_platform(self, monkeypatch):
+        monkeypatch.setattr("helpers.platform.system", lambda: "UnknownOS")
+        result = get_cpu_metrics()
+        assert result == {"percent": 0, "temp_c": None}
+
+
+class TestGetRamMetrics:
+
+    def test_returns_expected_keys(self):
+        result = get_ram_metrics()
+        assert "used_gb" in result
+        assert "total_gb" in result
+        assert "percent" in result
+
+    def test_returns_defaults_on_unsupported_platform(self, monkeypatch):
+        monkeypatch.setattr("helpers.platform.system", lambda: "UnknownOS")
+        result = get_ram_metrics()
+        assert result == {"used_gb": 0, "total_gb": 0, "percent": 0}

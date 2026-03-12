@@ -17,6 +17,9 @@
 
 set -euo pipefail
 
+# Prerequisites
+command -v jq >/dev/null 2>&1 || { echo "Error: jq is required but not installed." >&2; exit 1; }
+
 # Configuration
 DREAM_DIR="${DREAM_DIR:-$HOME/dream-server}"
 MODELS_DIR="${MODELS_DIR:-$DREAM_DIR/models}"
@@ -24,14 +27,14 @@ STATE_FILE="$DREAM_DIR/model-state.json"
 BACKUP_FILE="$DREAM_DIR/model-state.backup.json"
 LOG_FILE="$DREAM_DIR/upgrade-model.log"
 
-LLAMA_SERVER_PORT="${LLAMA_SERVER_PORT:-8080}"
+OLLAMA_PORT="${OLLAMA_PORT:-${LLAMA_SERVER_PORT:-8080}}"
 LLAMA_SERVER_CONTAINER="${LLAMA_SERVER_CONTAINER:-dream-llama-server}"
 
 HEALTH_CHECK_TIMEOUT=120  # seconds
 HEALTH_CHECK_INTERVAL=5   # seconds
 
 INFERENCE_SERVICE="llama-server"
-INFERENCE_PORT="$LLAMA_SERVER_PORT"
+INFERENCE_PORT="$OLLAMA_PORT"
 INFERENCE_CONTAINER="$LLAMA_SERVER_CONTAINER"
 MODEL_ENV_KEY="LLM_MODEL"
 
@@ -67,7 +70,7 @@ resolve_inference_runtime() {
         INFERENCE_SERVICE="llama-server"
     fi
 
-    INFERENCE_PORT="$LLAMA_SERVER_PORT"
+    INFERENCE_PORT="$OLLAMA_PORT"
     INFERENCE_CONTAINER="$LLAMA_SERVER_CONTAINER"
     MODEL_ENV_KEY="LLM_MODEL"
 }
@@ -140,16 +143,14 @@ save_state() {
     # Backup current state
     [[ -f "$STATE_FILE" ]] && cp "$STATE_FILE" "$BACKUP_FILE"
     
-    cat > "$STATE_FILE" << EOF
-{
-    "current": "$current",
-    "previous": "$previous",
-    "updatedAt": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
-    "history": [
-        {"model": "$current", "activatedAt": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"}
-    ]
-}
-EOF
+    jq -n         --arg cur "$current"         --arg prev "$previous"         --arg ts "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"         '{
+            current: $cur,
+            previous: $prev,
+            updatedAt: $ts,
+            history: [
+                {model: $cur, activatedAt: $ts}
+            ]
+        }' > "$STATE_FILE"
 }
 
 #-----------------------------------------------------------------------------
@@ -235,7 +236,10 @@ start_llm() {
     if [[ -f "$env_file" ]]; then
         # Update active model env key for detected inference backend.
         if grep -q "^${MODEL_ENV_KEY}=" "$env_file"; then
-            sed -i "s|^${MODEL_ENV_KEY}=.*|${MODEL_ENV_KEY}=$model|" "$env_file"
+            # Use awk index() instead of sed to avoid delimiter collisions
+            awk -v k="$MODEL_ENV_KEY" -v v="$model" '{
+                if (index($0, k "=") == 1) print k "=" v; else print
+            }' "$env_file" > "${env_file}.tmp" && mv "${env_file}.tmp" "$env_file"
         else
             echo "${MODEL_ENV_KEY}=$model" >> "$env_file"
         fi
@@ -440,7 +444,7 @@ Examples:
 
 Environment Variables:
   MODELS_DIR             Models directory (default: $MODELS_DIR)
-  LLAMA_SERVER_PORT      llama-server port (default: 8080)
+  OLLAMA_PORT            llama-server port (default: 8080)
   LLAMA_SERVER_CONTAINER Docker container name (default: dream-llama-server)
 
 EOF

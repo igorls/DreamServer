@@ -36,7 +36,8 @@ if [[ -f "$_DT_DIR/lib/service-registry.sh" ]]; then
     export SCRIPT_DIR="$_DT_DIR"
     . "$_DT_DIR/lib/service-registry.sh"
     sr_load
-    [[ -f "$_DT_DIR/.env" ]] && set -a && . "$_DT_DIR/.env" && set +a
+    [[ -f "$_DT_DIR/lib/safe-env.sh" ]] && . "$_DT_DIR/lib/safe-env.sh"
+    load_env_file "$_DT_DIR/.env"
 fi
 
 # Service endpoints — resolved from registry
@@ -85,11 +86,8 @@ RESULTS_DETAILS=()
 #--------------------------------------------------------------------------
 
 load_env() {
-    if [[ -f "$ENV_FILE" ]]; then
-        set -a
-        source "$ENV_FILE" 2>/dev/null || true
-        set +a
-    fi
+    [[ -f "$_DT_DIR/lib/safe-env.sh" ]] && . "$_DT_DIR/lib/safe-env.sh"
+    load_env_file "$ENV_FILE"
 }
 
 log() {
@@ -347,7 +345,7 @@ test_whisper() {
     response=$(curl -s --max-time "$TIMEOUT" "$health_url" 2>/dev/null || echo "")
     
     if [[ -n "$response" ]]; then
-        if echo "$response" | grep -qi "ok\|healthy\|ready"; then
+        if echo "$response" | grep -qiE "ok|healthy|ready"; then
             record_result "Whisper Health" "pass"
             print_test "Whisper Health" "pass"
         else
@@ -532,7 +530,7 @@ _print_json_summary() {
     local elapsed="$1"
     
     echo "{"
-    echo "  \"timestamp\": \"$(date -Iseconds)\","
+    echo "  \"timestamp\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\","
     echo "  \"runtime_seconds\": $elapsed,"
     echo "  \"summary\": {"
     echo "    \"total\": $TOTAL_TESTS,"

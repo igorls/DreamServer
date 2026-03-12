@@ -54,6 +54,11 @@ export function useSystemStatus() {
   const [loading, setLoading] = useState(!USE_MOCK_DATA)
   const [error, setError] = useState(null)
 
+  // Guard against overlapping fetches — if the API is slow (e.g.
+  // llama-server under inference load) we skip the next poll rather
+  // than stacking concurrent requests that can amplify the problem.
+  const fetchInFlight = useRef(false)
+
   // Abort controller for cancelling pending fetches on unmount
   const abortControllerRef = useRef(null)
 
@@ -65,12 +70,16 @@ export function useSystemStatus() {
     }
 
     const fetchStatus = async (signal) => {
+      // Skip this tick if the previous fetch hasn't returned yet.
+      if (fetchInFlight.current) return
+      fetchInFlight.current = true
+
       try {
         const response = await fetch('/api/status', { signal })
-        
+
         // Check if request was aborted
         if (signal?.aborted) return
-        
+
         if (!response.ok) throw new Error('Failed to fetch status')
         const data = await response.json()
         setStatus(data)
@@ -79,8 +88,9 @@ export function useSystemStatus() {
         // Don't set error if request was aborted
         if (err.name === 'AbortError') return
         setError(err.message)
-        // No silent fallback - let error propagate to UI
+        // Keep previous status on error so the UI doesn't flash
       } finally {
+        fetchInFlight.current = false
         if (!signal?.aborted) {
           setLoading(false)
         }

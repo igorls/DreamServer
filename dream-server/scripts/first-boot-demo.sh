@@ -27,7 +27,8 @@ if [[ -f "$_DEMO_DIR/lib/service-registry.sh" ]]; then
     export SCRIPT_DIR="$_DEMO_DIR"
     . "$_DEMO_DIR/lib/service-registry.sh"
     sr_load
-    [[ -f "$_DEMO_DIR/.env" ]] && set -a && . "$_DEMO_DIR/.env" && set +a
+    [[ -f "$_DEMO_DIR/lib/safe-env.sh" ]] && . "$_DEMO_DIR/lib/safe-env.sh"
+    load_env_file "$_DEMO_DIR/.env"
 fi
 
 LLM_URL="${LLM_URL:-http://localhost:${SERVICE_PORTS[llama-server]:-8080}}"
