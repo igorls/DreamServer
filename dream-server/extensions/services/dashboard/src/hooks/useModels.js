@@ -130,6 +130,41 @@ export function useModels() {
     }
   }
 
+  const addCustomModel = async (modelData) => {
+    try {
+      const response = await fetch('/api/models/custom', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(modelData),
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.detail || 'Failed to add custom model')
+      }
+      await fetchModels()
+      return await response.json()
+    } catch (err) {
+      setError(err.message)
+      return null
+    }
+  }
+
+  const removeCustomModel = async (modelId) => {
+    try {
+      const id = modelId.replace('custom:', '')
+      const response = await fetch(`/api/models/custom/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.detail || 'Failed to remove custom model')
+      }
+      await fetchModels()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
   return {
     models,
     allModels,
@@ -144,6 +179,8 @@ export function useModels() {
     downloadModel,
     loadModel,
     deleteModel,
+    addCustomModel,
+    removeCustomModel,
     refresh: fetchModels
   }
 }
@@ -270,6 +307,24 @@ export function useOllama() {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
           throw new Error(data.detail || 'Failed to load model')
+        }
+        return await res.json()
+      } catch (err) {
+        setError(err.message)
+        return null
+      }
+    },
+    unloadOllamaModel: async (modelName) => {
+      setError(null)
+      try {
+        const res = await fetch('/api/models/ollama/unload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: modelName }),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.detail || 'Failed to unload model')
         }
         return await res.json()
       } catch (err) {

@@ -3,7 +3,7 @@ import {
   Box, Download, Trash2, Check, AlertCircle, Loader2, Play,
   RefreshCw, HardDrive, Zap, Cloud, Server, ChevronDown,
   Eye, EyeOff, ExternalLink, X, Sparkles, Search, Info,
-  AlertTriangle
+  AlertTriangle, Plus, Square, Upload
 } from 'lucide-react'
 import { useModels, useProviders, useOllama } from '../hooks/useModels'
 import { useDownloadProgress } from '../hooks/useDownloadProgress'
@@ -44,12 +44,16 @@ export default function Models() {
   const downloadProgress = useDownloadProgress()
   const {
     models, gpu, activeModel, loading, error, actionLoading,
-    filter, setFilter, downloadModel, loadModel, deleteModel, refresh
+    filter, setFilter, downloadModel, loadModel, deleteModel,
+    addCustomModel, removeCustomModel, refresh
   } = useModels()
   const ollama = useOllama()
 
   // Search state
   const [search, setSearch] = useState('')
+
+  // Add custom model form
+  const [showAddForm, setShowAddForm] = useState(false)
 
   // Toast notifications
   const [toast, setToast] = useState(null)
@@ -129,7 +133,18 @@ export default function Models() {
 
       {/* Active Model Banner */}
       {activeModel && (
-        <ActiveModelBanner model={activeModel} gpu={gpu} />
+        <ActiveModelBanner
+          model={activeModel}
+          gpu={gpu}
+          onUnload={activeModel.backend === 'ollama' ? async () => {
+            const modelName = activeModel.id?.replace('ollama:', '') || activeModel.name
+            const ok = await ollama.unloadOllamaModel(modelName)
+            if (ok) {
+              showToast(`${activeModel.name} unloaded from VRAM`)
+              refresh()
+            }
+          } : null}
+        />
       )}
 
       {/* VRAM Meter */}
@@ -187,6 +202,33 @@ export default function Models() {
       {/* Ollama Section (shown in ollama tab) */}
       {filter === 'ollama' && (
         <OllamaSection ollama={ollama} onRefresh={refresh} />
+      )}
+
+      {/* Add Custom Model Button (shown in GGUF tab) */}
+      {filter === 'llama-server' && (
+        <div className="mb-5">
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            <Plus size={16} />
+            Add Custom Model
+          </button>
+        </div>
+      )}
+
+      {/* Add Custom Model Dialog */}
+      {showAddForm && (
+        <AddCustomModelForm
+          onAdd={async (data) => {
+            const result = await addCustomModel(data)
+            if (result) {
+              showToast('Custom model added successfully')
+              setShowAddForm(false)
+            }
+          }}
+          onClose={() => setShowAddForm(false)}
+        />
       )}
 
       {/* Cloud Providers (shown in cloud tab) */}
@@ -337,7 +379,9 @@ function ConfirmDialog({ title, message, onConfirm, onCancel }) {
 /* Active Model Banner                                                 */
 /* ------------------------------------------------------------------ */
 
-function ActiveModelBanner({ model, gpu }) {
+function ActiveModelBanner({ model, gpu, onUnload }) {
+  const [unloading, setUnloading] = useState(false)
+
   return (
     <div className="mb-6 p-5 bg-gradient-to-r from-indigo-900/30 to-purple-900/20 border border-indigo-500/30 rounded-xl">
       <div className="flex items-center justify-between">
@@ -368,6 +412,22 @@ function ActiveModelBanner({ model, gpu }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {onUnload && (
+            <button
+              onClick={async () => {
+                setUnloading(true)
+                try { await onUnload() } finally { setUnloading(false) }
+              }}
+              disabled={unloading}
+              className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 border border-zinc-700"
+            >
+              {unloading ? (
+                <><Loader2 size={12} className="animate-spin" /> Unloading...</>
+              ) : (
+                <><Square size={12} /> Unload</>  
+              )}
+            </button>
+          )}
           <span className="px-3 py-1.5 bg-green-500/15 text-green-400 rounded-lg text-xs font-semibold border border-green-500/20">
             <Check size={12} className="inline mr-1" />
             Running
@@ -1013,6 +1073,218 @@ function ProviderCard({ provider, isSaving, onSave, onDelete, onTestConnection }
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Add Custom Model Form                                               */
+/* ------------------------------------------------------------------ */
+
+function AddCustomModelForm({ onAdd, onClose }) {
+  const [form, setForm] = useState({
+    name: '',
+    huggingface_repo: '',
+    huggingface_file: '',
+    family: '',
+    description: '',
+    size_gb: '',
+    vram_required_gb: '',
+    context_length: '',
+    quantization: '',
+    specialty: 'General',
+  })
+  const [submitting, setSubmitting] = useState(false)
+
+  const updateField = (field, value) => setForm(prev => ({ ...prev, [field]: value }))
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!form.name || !form.huggingface_repo || !form.huggingface_file) return
+
+    setSubmitting(true)
+    try {
+      await onAdd({
+        ...form,
+        size_gb: form.size_gb ? parseFloat(form.size_gb) : null,
+        vram_required_gb: form.vram_required_gb ? parseFloat(form.vram_required_gb) : null,
+        context_length: form.context_length ? parseInt(form.context_length) : null,
+      })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const inputClass = "w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none"
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between sticky top-0 bg-zinc-900 z-10 rounded-t-xl">
+          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+            <Upload size={18} className="text-indigo-400" />
+            Add Custom Model
+          </h3>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white p-1">
+            <X size={18} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Required Fields */}
+          <div>
+            <label className="block text-xs text-zinc-400 mb-1.5 font-medium">
+              Model Name <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.name}
+              onChange={e => updateField('name', e.target.value)}
+              placeholder="e.g. Phi-4 Mini 3.8B"
+              className={inputClass}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-zinc-400 mb-1.5 font-medium">
+              HuggingFace Repository <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.huggingface_repo}
+              onChange={e => updateField('huggingface_repo', e.target.value)}
+              placeholder="e.g. bartowski/Phi-4-mini-instruct-GGUF"
+              className={inputClass}
+              required
+            />
+            <p className="text-xs text-zinc-600 mt-1">Format: username/repository-name</p>
+          </div>
+
+          <div>
+            <label className="block text-xs text-zinc-400 mb-1.5 font-medium">
+              GGUF Filename <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.huggingface_file}
+              onChange={e => updateField('huggingface_file', e.target.value)}
+              placeholder="e.g. Phi-4-mini-instruct-Q4_K_M.gguf"
+              className={inputClass}
+              required
+            />
+          </div>
+
+          {/* Optional Fields */}
+          <div className="pt-3 border-t border-zinc-800">
+            <p className="text-xs text-zinc-500 mb-3 font-medium uppercase tracking-wider">Optional Details</p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Family</label>
+                <input
+                  type="text"
+                  value={form.family}
+                  onChange={e => updateField('family', e.target.value)}
+                  placeholder="e.g. Phi"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Quantization</label>
+                <input
+                  type="text"
+                  value={form.quantization}
+                  onChange={e => updateField('quantization', e.target.value)}
+                  placeholder="e.g. Q4_K_M"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Size (GB)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={form.size_gb}
+                  onChange={e => updateField('size_gb', e.target.value)}
+                  placeholder="e.g. 2.3"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">VRAM Required (GB)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={form.vram_required_gb}
+                  onChange={e => updateField('vram_required_gb', e.target.value)}
+                  placeholder="e.g. 4"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Context Length</label>
+                <input
+                  type="number"
+                  value={form.context_length}
+                  onChange={e => updateField('context_length', e.target.value)}
+                  placeholder="e.g. 131072"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Specialty</label>
+                <select
+                  value={form.specialty}
+                  onChange={e => updateField('specialty', e.target.value)}
+                  className={inputClass + ' appearance-none cursor-pointer'}
+                >
+                  {['General', 'Code', 'Reasoning', 'Fast', 'Balanced', 'Quality'].map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <label className="block text-xs text-zinc-400 mb-1">Description</label>
+              <input
+                type="text"
+                value={form.description}
+                onChange={e => updateField('description', e.target.value)}
+                placeholder="Short description of the model..."
+                className={inputClass}
+              />
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-3 pt-3 border-t border-zinc-800">
+            <button
+              type="submit"
+              disabled={submitting || !form.name || !form.huggingface_repo || !form.huggingface_file}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              {submitting ? (
+                <><Loader2 size={16} className="animate-spin" /> Adding...</>
+              ) : (
+                <><Plus size={16} /> Add Model</>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-600 rounded-lg text-sm transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
