@@ -35,6 +35,17 @@ function computeHealth(services) {
   return { text: `${healthy}/${deployed.length} services online.`, color: healthy === deployed.length ? 'text-green-400' : 'text-zinc-400' }
 }
 
+// Memoized computeHealth for performance
+const memoizedComputeHealth = /* @__PURE__ */ new WeakMap()
+function getComputeHealthMemoized(services) {
+  if (!services) return computeHealth(services)
+  const cached = memoizedComputeHealth.get(services)
+  if (cached) return cached
+  const result = computeHealth(services)
+  memoizedComputeHealth.set(services, result)
+  return result
+}
+
 const FEATURE_ICONS = {
   MessageSquare,
   Mic,
@@ -85,6 +96,17 @@ function sortBySeverity(services) {
     .sort((a, b) =>
       (severityOrder[a.status] ?? 9) - (severityOrder[b.status] ?? 9)
     )
+}
+
+// Memoized sortBySeverity for performance
+const memoizedSortBySeverity = /* @__PURE__ */ new WeakMap()
+function getSortBySeverityMemoized(services) {
+  if (!services) return []
+  const cached = memoizedSortBySeverity.get(services)
+  if (cached) return cached
+  const result = sortBySeverity(services)
+  memoizedSortBySeverity.set(services, result)
+  return result
 }
 
 // Format large token counts: 1234 → "1.2k", 1500000 → "1.5M", 1500000000 → "1.5B"
@@ -153,8 +175,8 @@ export default function Dashboard({ status, loading }) {
     )
   }
 
-  const health = computeHealth(status?.services)
-  const servicesSorted = sortBySeverity(status?.services)
+  const health = useMemo(() => getComputeHealthMemoized(status?.services), [status?.services])
+  const servicesSorted = useMemo(() => getSortBySeverityMemoized(status?.services), [status?.services])
 
   return (
     <div className="p-8">

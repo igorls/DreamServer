@@ -46,10 +46,10 @@
 
 | ID | Task | Priority | Status | Assignee | Notes |
 |----|------|----------|--------|----------|-------|
-| M1 | Memoize `sortBySeverity` in Dashboard.jsx | 🟡 | ⬜ | | Use `useMemo` |
-| M2 | Memoize `computeHealth` in Dashboard.jsx | 🟡 | ⬜ | | Use `useMemo` |
+| M1 | Memoize `sortBySeverity` in Dashboard.jsx | 🟡 | ✅ | | Use `useMemo` with WeakMap |
+| M2 | Memoize `computeHealth` in Dashboard.jsx | 🟡 | ✅ | | Use `useMemo` with WeakMap |
 | M3 | Add virtualization to Models list | 🟡 | ⬜ | | Use `react-window` |
-| M4 | Memoize `getInternalRoutes` result in App.jsx | 🟡 | ⬜ | | |
+| M4 | Memoize `getInternalRoutes` result in App.jsx | 🟡 | ✅ | | |
 
 ### Accessibility
 
@@ -65,8 +65,8 @@
 
 | ID | Task | Priority | Status | Assignee | Notes |
 |----|------|----------|--------|----------|-------|
-| M10 | Create global toast context | 🟡 | ⬜ | | Extract from Models.jsx |
-| M11 | Create global confirm dialog context | 🟡 | ⬜ | | Extract from Models.jsx |
+| M10 | Create global toast context | 🟡 | ✅ | | `src/contexts/ToastContext.jsx` |
+| M11 | Create global confirm dialog context | 🟡 | ✅ | | `src/contexts/ConfirmContext.jsx` |
 | M12 | Add error boundaries per page | 🟡 | ⬜ | | |
 | M13 | Refactor Models.jsx into smaller components | 🟡 | ⬜ | | 600+ lines is too large |
 
@@ -121,10 +121,10 @@
 | Priority | Total | Done | In Progress | Todo |
 |----------|-------|------|-------------|------|
 | Critical | 9 | 9 | 0 | 0 |
-| Medium | 13 | 0 | 0 | 13 |
+| Medium | 13 | 4 | 0 | 9 |
 | Low | 15 | 0 | 0 | 15 |
 | Docs | 3 | 0 | 0 | 3 |
-| **Total** | **40** | **9** | **0** | **31** |
+| **Total** | **40** | **13** | **0** | **27** |
 
 ---
 
@@ -134,3 +134,5 @@
 |------|--------|
 | 2026-03-12 | Initial task list created from DASHBOARD_REVIEW.md |
 | 2026-03-12 | Completed: C1-C9 (Testing infrastructure + Critical bug fixes) |
+| 2026-03-12 | Completed: M1-M4 (Performance optimizations) |
+| 2026-03-12 | Completed: M10-M11 (Global toast and confirm contexts) |

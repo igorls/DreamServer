@@ -1,7 +1,7 @@
 """Model Hub API router — unified model management across backends.
 
 Endpoints:
-  GET  /api/models                    — List all models (catalog + downloaded + loaded)
+  GET  /api/models                    — List all models (catalog + custom + downloaded + loaded)
   GET  /api/models/active             — Currently loaded model info
   POST /api/models/{model_id}/download — Start a model download from HuggingFace
   POST /api/models/{model_id}/load    — Switch active model
@@ -9,6 +9,9 @@ Endpoints:
   GET  /api/models/download-status    — Active download progress
   GET  /api/models/providers          — Cloud provider configurations
   PUT  /api/models/providers/{provider} — Save cloud provider API key
+  POST /api/models/custom             — Add a custom GGUF model entry
+  GET  /api/models/custom             — List custom model entries
+  DELETE /api/models/custom/{model_id} — Remove a custom model entry
 """
 
 import asyncio
@@ -36,6 +39,7 @@ router = APIRouter(prefix="/api/models", tags=["models"])
 CATALOG_PATH = Path(INSTALL_DIR) / "config" / "model_catalog.json"
 MODELS_DIR = Path(DATA_DIR) / "models"
 PROVIDERS_FILE = Path(DATA_DIR) / "config" / "providers.json"
+CUSTOM_MODELS_FILE = Path(DATA_DIR) / "config" / "custom_models.json"
 DOWNLOAD_STATUS_FILE = Path(DATA_DIR) / "model-download-status.json"
 LLAMA_CONFIG_PATH = Path(INSTALL_DIR) / "config" / "llama-server" / "models.ini"
 ENV_FILE = Path(INSTALL_DIR) / ".env"
@@ -47,6 +51,19 @@ class ProviderConfig(BaseModel):
     api_key: str = Field(..., min_length=1)
     default_model: Optional[str] = None
 
+
+class CustomModelInput(BaseModel):
+    """Schema for adding a custom GGUF model."""
+    name: str = Field(..., min_length=1, max_length=200)
+    huggingface_repo: str = Field(..., min_length=3, max_length=300)
+    huggingface_file: str = Field(..., min_length=3, max_length=300)
+    family: Optional[str] = None
+    description: Optional[str] = None
+    size_gb: Optional[float] = None
+    vram_required_gb: Optional[float] = None
+    context_length: Optional[int] = None
+    quantization: Optional[str] = None
+    specialty: Optional[str] = "General"
 
 class ModelEntry(BaseModel):
     id: str
@@ -265,6 +282,24 @@ def validate_provider_id(provider_id: str) -> str:
     return provider_id
 
 
+# --- Custom Model Helpers ---
+
+def _load_custom_models() -> list:
+    """Load custom models from user data."""
+    if not CUSTOM_MODELS_FILE.exists():
+        return []
+    try:
+        return json.loads(CUSTOM_MODELS_FILE.read_text())
+    except (json.JSONDecodeError, IOError):
+        return []
+
+
+def _save_custom_models(models: list) -> None:
+    """Save custom models to user data."""
+    CUSTOM_MODELS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CUSTOM_MODELS_FILE.write_text(json.dumps(models, indent=2))
+
+
 # --- Endpoints ---
 
 
@@ -313,7 +348,42 @@ async def list_models(api_key: str = Depends(verify_api_key)):
     catalog_filenames = {
         m.get("gguf", {}).get("filename", "") for m in catalog.get("models", [])
     }
-    for filename in sorted(downloaded - catalog_filenames):
+
+    # Merge custom models from user storage
+    custom_models = _load_custom_models()
+    custom_filenames = set()
+    for cm in custom_models:
+        filename = cm.get("gguf", {}).get("filename", "")
+        custom_filenames.add(filename)
+        status = "available"
+        if filename and filename == active_file:
+            status = "loaded"
+        elif filename and filename in downloaded:
+            status = "downloaded"
+
+        fits = True
+        if vram_total is not None:
+            fits = cm.get("vram_required_gb", 0) <= vram_total
+
+        models.append(ModelEntry(
+            id=cm["id"],
+            name=cm["name"],
+            family=cm.get("family"),
+            description=cm.get("description", "Custom model"),
+            size_gb=cm.get("size_gb", 0),
+            vram_required_gb=cm.get("vram_required_gb", 0),
+            context_length=cm.get("context_length", 0),
+            tokens_per_sec_estimate=cm.get("tokens_per_sec_estimate"),
+            quantization=cm.get("quantization"),
+            specialty=cm.get("specialty", "General"),
+            backend="llama-server",
+            status=status,
+            fits_vram=fits,
+        ))
+
+    # Detect orphan downloads (not in catalog or custom models)
+    known_filenames = catalog_filenames | custom_filenames
+    for filename in sorted(downloaded - known_filenames):
         if not filename.endswith(".gguf"):
             continue
         name = filename.replace(".gguf", "").replace("-", " ").replace("_", " ")
@@ -455,6 +525,34 @@ async def ollama_load_model(req: OllamaPullRequest, api_key: str = Depends(verif
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to load model: {e}")
+
+
+@router.post("/ollama/unload")
+async def ollama_unload_model(req: OllamaPullRequest, api_key: str = Depends(verify_api_key)):
+    """Unload an Ollama model from VRAM by setting keep_alive to 0."""
+    model_name = validate_ollama_model(req.model)
+    url = _get_ollama_url()
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{url}/api/generate",
+                json={
+                    "model": model_name,
+                    "prompt": "",
+                    "stream": False,
+                    "keep_alive": 0,
+                },
+            )
+            if resp.status_code == 404:
+                raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found in Ollama")
+            resp.raise_for_status()
+
+        return {"status": "unloaded", "model": model_name, "message": f"{model_name} unloaded from VRAM"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to unload model: {e}")
 
 
 @router.get("/ollama/info")
@@ -642,6 +740,66 @@ async def ollama_delete(model_name: str, api_key: str = Depends(verify_api_key))
 
 
 # --- Local Model Management ---
+
+
+@router.post("/custom")
+async def add_custom_model(model: CustomModelInput, api_key: str = Depends(verify_api_key)):
+    """Add a custom GGUF model entry."""
+    models = _load_custom_models()
+
+    # Generate ID from name
+    model_id = re.sub(r'[^a-zA-Z0-9]', '-', model.name.lower()).strip('-')[:64]
+    if not model_id:
+        raise HTTPException(status_code=400, detail="Invalid model name")
+
+    # Check for duplicates
+    if any(m["id"] == model_id for m in models):
+        raise HTTPException(status_code=409, detail=f"Custom model '{model_id}' already exists")
+
+    # Build the model entry
+    entry = {
+        "id": f"custom:{model_id}",
+        "name": model.name,
+        "family": model.family,
+        "description": model.description or f"Custom model from {model.huggingface_repo}",
+        "size_gb": model.size_gb or 0,
+        "vram_required_gb": model.vram_required_gb or 0,
+        "context_length": model.context_length or 0,
+        "quantization": model.quantization,
+        "specialty": model.specialty or "General",
+        "backends": ["llama-server"],
+        "gguf": {
+            "filename": model.huggingface_file,
+            "huggingface_repo": model.huggingface_repo,
+            "huggingface_file": model.huggingface_file,
+        },
+    }
+
+    models.append(entry)
+    _save_custom_models(models)
+
+    return {"status": "added", "model": entry}
+
+
+@router.get("/custom")
+async def list_custom_models(api_key: str = Depends(verify_api_key)):
+    """List user-added custom models."""
+    return {"models": _load_custom_models()}
+
+
+@router.delete("/custom/{model_id}")
+async def delete_custom_model(model_id: str, api_key: str = Depends(verify_api_key)):
+    """Remove a custom model entry (does not delete the file)."""
+    models = _load_custom_models()
+    full_id = f"custom:{model_id}" if not model_id.startswith("custom:") else model_id
+    filtered = [m for m in models if m["id"] != full_id]
+
+    if len(filtered) == len(models):
+        raise HTTPException(status_code=404, detail=f"Custom model '{model_id}' not found")
+
+    _save_custom_models(filtered)
+    return {"status": "deleted", "model_id": full_id}
+
 
 @router.post("/{model_id}/download")
 async def download_model(model_id: str, api_key: str = Depends(verify_api_key)):

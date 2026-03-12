@@ -1,5 +1,5 @@
 import { Routes, Route } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Sidebar from './components/Sidebar'
 import SetupWizard from './components/SetupWizard'
 import { useSystemStatus } from './hooks/useSystemStatus'
@@ -30,7 +30,8 @@ function App() {
     setFirstRun(false)
   }
 
-  const routes = getInternalRoutes({ status, loading })
+  // Memoize routes to prevent recalculation on every render
+  const routes = useMemo(() => getInternalRoutes({ status, loading }), [status, loading])
 
   return (
     <div className="flex min-h-screen bg-[#0f0f13]">
