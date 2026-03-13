@@ -270,8 +270,9 @@ async def _build_api_status() -> dict:
     # Only query llama-server metrics when it's the active backend
     from routers.models import _get_llm_backend
     llm_backend = _get_llm_backend()
-    if llm_backend == "llama-server":
-        # Resolve the loaded model name once, then fan it out.
+    if llm_backend in ("llama-server", "vllm"):
+        # Both llama-server and vLLM expose OpenAI-compatible endpoints
+        # on the same container (llama-server:8080)
         loaded_model = await get_loaded_model()
         llama_metrics_data, context_size = await asyncio.gather(
             get_llama_metrics(model_hint=loaded_model),

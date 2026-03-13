@@ -43,6 +43,10 @@ CUSTOM_MODELS_FILE = Path(DATA_DIR) / "config" / "custom_models.json"
 DOWNLOAD_STATUS_FILE = Path(DATA_DIR) / "model-download-status.json"
 LLAMA_CONFIG_PATH = Path(INSTALL_DIR) / "config" / "llama-server" / "models.ini"
 ENV_FILE = Path(INSTALL_DIR) / ".env"
+HF_CACHE_DIR = Path(DATA_DIR) / "hf-cache"
+
+MODEL_CONTROLLER_URL = os.environ.get("MODEL_CONTROLLER_URL", "http://model-controller:3003")
+MODEL_CONTROLLER_SECRET = os.environ.get("MODEL_CONTROLLER_SECRET", "")
 
 # --- Pydantic Schemas ---
 
@@ -99,6 +103,12 @@ class ProviderInfo(BaseModel):
     docs_url: Optional[str] = None
 
 
+class SwitchModelRequest(BaseModel):
+    """Request body for switching the active model via the controller."""
+    model_file: str = Field(..., min_length=1, max_length=500)
+    backend: str = Field(default="llama-server", pattern="^(llama-server|vllm)$")
+
+
 # --- Catalog Loading ---
 
 
@@ -119,6 +129,24 @@ def get_downloaded_gguf_files() -> set[str]:
     if not MODELS_DIR.exists():
         return set()
     return {f.name for f in MODELS_DIR.iterdir() if f.suffix == ".gguf" and f.is_file()}
+
+
+def get_vllm_cached_models() -> set[str]:
+    """Return the set of HuggingFace model IDs already cached for vLLM.
+
+    Checks HF cache directory structure: hub/models--org--name/
+    """
+    hub_dir = HF_CACHE_DIR / "hub"
+    if not hub_dir.exists():
+        return set()
+    cached = set()
+    for item in hub_dir.iterdir():
+        if item.is_dir() and item.name.startswith("models--"):
+            # Convert models--Qwen--Qwen3-8B -> Qwen/Qwen3-8B
+            parts = item.name.replace("models--", "", 1).split("--", 1)
+            if len(parts) == 2:
+                cached.add(f"{parts[0]}/{parts[1]}")
+    return cached
 
 
 def get_active_model_from_config() -> Optional[str]:
@@ -185,13 +213,27 @@ def write_download_status(status: dict) -> None:
 
 
 def _get_llm_backend() -> str:
-    """Read the configured LLM backend from the .env file."""
+    """Read the configured LLM backend from the .env file.
+
+    Recognizes 'ollama', 'llama-server', and 'vllm'.
+    Auto-detects vllm if VLLM_MODEL is set in .env.
+    """
     if ENV_FILE.exists():
         try:
+            has_vllm_model = False
+            explicit_backend = None
             for line in ENV_FILE.read_text().splitlines():
                 line = line.strip()
                 if line.startswith("LLM_BACKEND="):
-                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+                    explicit_backend = line.split("=", 1)[1].strip().strip('"').strip("'")
+                if line.startswith("VLLM_MODEL="):
+                    val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    if val:
+                        has_vllm_model = True
+            if explicit_backend:
+                return explicit_backend
+            if has_vllm_model:
+                return "vllm"
         except Exception:
             pass
     return "llama-server"
@@ -308,6 +350,7 @@ async def list_models(api_key: str = Depends(verify_api_key)):
     """Return unified model list from catalog enriched with local state."""
     catalog = load_catalog()
     downloaded = get_downloaded_gguf_files()
+    vllm_cached = get_vllm_cached_models()
     active_file = get_active_model_from_config()
     vram_total = get_vram_total_gb()
     llm_backend = _get_llm_backend()
@@ -316,13 +359,21 @@ async def list_models(api_key: str = Depends(verify_api_key)):
     for entry in catalog.get("models", []):
 
         gguf_info = entry.get("gguf", {})
+        vllm_info = entry.get("vllm", {})
         filename = gguf_info.get("filename", "")
+        hf_repo = vllm_info.get("huggingface_repo", "")
+        backends = entry.get("backends", ["llama-server"])
 
         status = "available"
-        if filename and filename == active_file:
-            status = "loaded"
-        elif filename and filename in downloaded:
-            status = "downloaded"
+        if "vllm" in backends and hf_repo:
+            # vLLM model — check HF cache
+            if hf_repo in vllm_cached:
+                status = "downloaded"
+        elif filename:
+            if filename == active_file:
+                status = "loaded"
+            elif filename in downloaded:
+                status = "downloaded"
 
         fits = True
         if vram_total is not None:
@@ -339,7 +390,7 @@ async def list_models(api_key: str = Depends(verify_api_key)):
             tokens_per_sec_estimate=entry.get("tokens_per_sec_estimate"),
             quantization=entry.get("quantization"),
             specialty=entry.get("specialty", "General"),
-            backend=entry.get("backends", ["llama-server"])[0],
+            backend=backends[0],
             status=status,
             fits_vram=fits,
         ))
@@ -413,15 +464,24 @@ async def list_models(api_key: str = Depends(verify_api_key)):
             "vramFree": round((gpu.memory_total_mb - gpu.memory_used_mb) / 1024, 1),
             "processes": [
                 {"pid": p.pid, "name": p.name, "memoryMb": p.memory_mb}
-                for p in gpu.processes
-            ] if gpu.processes else [],
+                for p in getattr(gpu, 'processes', None) or []
+            ],
         }
+
+    # Backend capabilities
+    can_hot_swap = llm_backend == "ollama"
+    capabilities = {
+        "canHotSwap": can_hot_swap,
+        "requiresRestart": not can_hot_swap,
+        "canUnload": llm_backend == "ollama",
+    }
 
     return {
         "models": [m.model_dump() for m in models],
         "gpu": gpu_data,
         "currentModel": active_file,
         "llmBackend": llm_backend,
+        "backendCapabilities": capabilities,
     }
 
 
@@ -453,6 +513,26 @@ async def get_active(api_key: str = Depends(verify_api_key)):
             logger.debug("Ollama /api/ps failed: %s", e)
         return ActiveModel()
 
+    # For vllm backend, query the OpenAI-compatible /v1/models
+    if llm_backend == "vllm":
+        try:
+            ollama_url = _get_ollama_url()  # same host:port for vllm container
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"{ollama_url}/v1/models")
+                resp.raise_for_status()
+                data = resp.json()
+                models = data.get("data", [])
+                if models:
+                    model_id = models[0].get("id", "")
+                    return ActiveModel(
+                        id=model_id,
+                        name=model_id,
+                        backend="vllm",
+                    )
+        except Exception as e:
+            logger.debug("vLLM /v1/models query failed: %s", e)
+        return ActiveModel(backend="vllm")
+
     # For llama-server backend, read from models.ini
     catalog = load_catalog()
     active_file = get_active_model_from_config()
@@ -475,6 +555,84 @@ async def get_active(api_key: str = Depends(verify_api_key)):
         id=active_file, name=active_file,
         backend="llama-server",
     )
+
+
+# --- Backend Controller Proxy ---
+# These endpoints proxy to the model-controller sidecar for container management
+
+
+def _controller_headers() -> dict:
+    """Build auth headers for the model-controller sidecar."""
+    headers = {}
+    if MODEL_CONTROLLER_SECRET:
+        headers["Authorization"] = f"Bearer {MODEL_CONTROLLER_SECRET}"
+    return headers
+
+
+@router.post("/backend/switch")
+async def switch_backend_model(req: SwitchModelRequest, api_key: str = Depends(verify_api_key)):
+    """Switch the active model via the model-controller sidecar.
+
+    The controller updates .env and restarts the llama-server container.
+    Model must be pre-downloaded before calling this endpoint.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            resp = await client.post(
+                f"{MODEL_CONTROLLER_URL}/switch",
+                json={"model_file": req.model_file, "backend": req.backend},
+                headers=_controller_headers(),
+            )
+            data = resp.json()
+            if resp.status_code != 200:
+                raise HTTPException(
+                    status_code=resp.status_code,
+                    detail=data.get("error", "Controller returned an error"),
+                )
+            return data
+    except HTTPException:
+        raise
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=503,
+            detail="Model controller is not reachable. Is the service running?",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Controller proxy failed: {e}")
+
+
+@router.get("/backend/status")
+async def backend_status(api_key: str = Depends(verify_api_key)):
+    """Query the model-controller for current backend state.
+
+    Returns container status, loaded model, and health.
+    Used for polling during model switches.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"{MODEL_CONTROLLER_URL}/status",
+                headers=_controller_headers(),
+            )
+            data = resp.json()
+            return data
+    except httpx.ConnectError:
+        return {
+            "backend": "unknown",
+            "container": "unreachable",
+            "healthy": False,
+            "model": None,
+            "controllerReachable": False,
+        }
+    except Exception as e:
+        logger.warning("Controller status query failed: %s", e)
+        return {
+            "backend": "unknown",
+            "container": "error",
+            "healthy": False,
+            "model": None,
+            "error": str(e),
+        }
 
 
 # --- Ollama Management Schemas ---
@@ -807,7 +965,10 @@ async def delete_custom_model(model_id: str, api_key: str = Depends(verify_api_k
 
 @router.post("/{model_id}/download")
 async def download_model(model_id: str, api_key: str = Depends(verify_api_key)):
-    """Trigger a model download from HuggingFace."""
+    """Trigger a model download from HuggingFace.
+
+    Supports both GGUF (llama-server) and full-weight (vLLM) models.
+    """
     validate_model_id(model_id)
 
     catalog = load_catalog()
@@ -820,19 +981,28 @@ async def download_model(model_id: str, api_key: str = Depends(verify_api_key)):
     if not entry:
         raise HTTPException(status_code=404, detail=f"Model '{model_id}' not found in catalog")
 
-    gguf = entry.get("gguf")
-    if not gguf:
-        raise HTTPException(status_code=400, detail="Model has no download info")
-
-    filename = gguf["filename"]
-    downloaded = get_downloaded_gguf_files()
-    if filename in downloaded:
-        raise HTTPException(status_code=409, detail="Model already downloaded")
-
     # Check for active download
     current = get_download_status()
     if current and current.get("status") == "downloading":
         raise HTTPException(status_code=409, detail="Another download is in progress")
+
+    # Determine download type: vLLM HF cache vs GGUF file
+    vllm_info = entry.get("vllm", {})
+    gguf = entry.get("gguf")
+
+    if vllm_info.get("huggingface_repo"):
+        return await _download_vllm_model(model_id, entry, vllm_info)
+    elif gguf:
+        return await _download_gguf_model(model_id, entry, gguf)
+    else:
+        raise HTTPException(status_code=400, detail="Model has no download info")
+
+async def _download_gguf_model(model_id: str, entry: dict, gguf: dict):
+    """Download a GGUF model file to the models directory."""
+    filename = gguf["filename"]
+    downloaded = get_downloaded_gguf_files()
+    if filename in downloaded:
+        raise HTTPException(status_code=409, detail="Model already downloaded")
 
     repo = gguf.get("huggingface_repo", "")
     hf_file = gguf.get("huggingface_file", filename)
@@ -855,7 +1025,6 @@ async def download_model(model_id: str, api_key: str = Depends(verify_api_key)):
     async def _do_download():
         try:
             MODELS_DIR.mkdir(parents=True, exist_ok=True)
-            dest = MODELS_DIR / filename
 
             # Use huggingface-cli to download
             cmd = [
@@ -886,7 +1055,6 @@ async def download_model(model_id: str, api_key: str = Depends(verify_api_key)):
                 # Typical format: "Downloading model.gguf:  45%|████      | 2.1G/4.7G [01:23<01:42, 25.3MB/s]"
                 pct_match = re.search(r"(\d+)%\|", text)
                 speed_match = re.search(r"([\d.]+)(MB|GB|KB)/s", text)
-                downloaded_match = re.search(r"\|\s*([\d.]+)(G|M|K)", text)
 
                 if pct_match:
                     pct = int(pct_match.group(1))
@@ -971,6 +1139,136 @@ async def download_model(model_id: str, api_key: str = Depends(verify_api_key)):
         "model_id": model_id,
         "filename": filename,
         "message": f"Download started for {entry['name']}",
+    }
+
+
+async def _download_vllm_model(model_id: str, entry: dict, vllm_info: dict):
+    """Pre-download a HuggingFace model to the shared HF cache for vLLM.
+
+    Uses `huggingface-cli download <repo>` which downloads full model weights
+    to the standard HF cache directory. When vLLM starts with the same model,
+    it finds the cached weights and skips the download.
+    """
+    repo = vllm_info["huggingface_repo"]
+    vllm_cached = get_vllm_cached_models()
+    if repo in vllm_cached:
+        raise HTTPException(status_code=409, detail="Model already cached")
+
+    total_bytes_est = int(entry.get("size_gb", 0) * 1024**3)
+
+    write_download_status({
+        "status": "downloading",
+        "model_id": model_id,
+        "model": entry["name"],
+        "filename": repo,
+        "repo": repo,
+        "percent": 0,
+        "bytesDownloaded": 0,
+        "bytesTotal": total_bytes_est,
+        "speedBytesPerSec": 0,
+    })
+
+    async def _do_vllm_download():
+        try:
+            HF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+            cmd = [
+                "huggingface-cli", "download",
+                repo,
+                "--cache-dir", str(HF_CACHE_DIR),
+            ]
+
+            logger.info("Starting vLLM pre-download: %s", " ".join(cmd))
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            last_percent = 0
+            while True:
+                line = await proc.stderr.readline()
+                if not line:
+                    break
+                text = line.decode("utf-8", errors="replace").strip()
+                if not text:
+                    continue
+
+                pct_match = re.search(r"(\d+)%\|", text)
+                speed_match = re.search(r"([\d.]+)(MB|GB|KB)/s", text)
+
+                if pct_match:
+                    pct = int(pct_match.group(1))
+                    if pct > last_percent:
+                        last_percent = pct
+                        speed = 0
+                        if speed_match:
+                            val = float(speed_match.group(1))
+                            unit = speed_match.group(2)
+                            if unit == "GB":
+                                speed = int(val * 1024**3)
+                            elif unit == "MB":
+                                speed = int(val * 1024**2)
+                            elif unit == "KB":
+                                speed = int(val * 1024)
+
+                        bytes_done = int(total_bytes_est * pct / 100)
+
+                        write_download_status({
+                            "status": "downloading",
+                            "model_id": model_id,
+                            "model": entry["name"],
+                            "filename": repo,
+                            "repo": repo,
+                            "percent": pct,
+                            "bytesDownloaded": bytes_done,
+                            "bytesTotal": total_bytes_est,
+                            "speedBytesPerSec": speed,
+                        })
+
+            await proc.wait()
+
+            if proc.returncode == 0:
+                write_download_status({
+                    "status": "complete",
+                    "model_id": model_id,
+                    "model": entry["name"],
+                    "filename": repo,
+                    "percent": 100,
+                    "bytesDownloaded": total_bytes_est,
+                    "bytesTotal": total_bytes_est,
+                })
+                logger.info("vLLM pre-download complete: %s", repo)
+            else:
+                stderr_output = ""
+                remaining = await proc.stderr.read()
+                if remaining:
+                    stderr_output = remaining.decode("utf-8", errors="replace")
+                write_download_status({
+                    "status": "error",
+                    "model_id": model_id,
+                    "model": entry["name"],
+                    "filename": repo,
+                    "message": f"Download failed (exit code {proc.returncode}): {stderr_output[:500]}",
+                })
+                logger.error("vLLM pre-download failed for %s: exit %d", repo, proc.returncode)
+        except Exception as e:
+            write_download_status({
+                "status": "error",
+                "model_id": model_id,
+                "model": entry["name"],
+                "filename": repo,
+                "message": str(e),
+            })
+            logger.exception("vLLM pre-download error for %s", repo)
+
+    asyncio.create_task(_do_vllm_download())
+
+    return {
+        "status": "downloading",
+        "model_id": model_id,
+        "filename": repo,
+        "message": f"Pre-downloading {entry['name']} to HF cache for vLLM",
     }
 
 

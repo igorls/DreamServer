@@ -13,6 +13,10 @@ export function useModels() {
   const [error, setError] = useState(null)
   const [actionLoading, setActionLoading] = useState(null)
   const [filter, setFilter] = useState('all')
+  const [llmBackend, setLlmBackend] = useState(null)
+  const [backendCapabilities, setBackendCapabilities] = useState(null)
+  const [isRestarting, setIsRestarting] = useState(false)
+  const [backendStatus, setBackendStatus] = useState(null)
 
   // Abort controller for cancelling pending fetches on unmount
   const abortControllerRef = useRef(null)
@@ -33,6 +37,8 @@ export function useModels() {
       setAllModels(modelsData.models || [])
       setGpu(modelsData.gpu)
       setCurrentModel(modelsData.currentModel)
+      setLlmBackend(modelsData.llmBackend || null)
+      setBackendCapabilities(modelsData.backendCapabilities || null)
 
       if (activeRes.ok) {
         const activeData = await activeRes.json()
@@ -112,6 +118,69 @@ export function useModels() {
     }
   }
 
+  const switchModel = async (modelFile, backend = 'llama-server') => {
+    setIsRestarting(true)
+    setBackendStatus({ status: 'switching', message: 'Sending switch request...' })
+    try {
+      const response = await fetch('/api/models/backend/switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model_file: modelFile, backend }),
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.detail || 'Failed to switch model')
+      }
+      const result = await response.json()
+      setBackendStatus({ status: 'restarting', message: result.message || 'Container restarting...' })
+
+      // Poll backend health until healthy or timeout
+      const maxWait = 120000 // 2 minutes
+      const pollInterval = 2000
+      const startTime = Date.now()
+
+      const pollHealth = () => {
+        return new Promise((resolve, reject) => {
+          const check = async () => {
+            if (Date.now() - startTime > maxWait) {
+              reject(new Error('Restart timed out. Check the llama-server container status.'))
+              return
+            }
+            try {
+              const statusRes = await fetch('/api/models/backend/status')
+              if (statusRes.ok) {
+                const status = await statusRes.json()
+                setBackendStatus({
+                  status: status.healthy ? 'healthy' : 'starting',
+                  message: status.healthy ? 'Model loaded successfully!' : 'Loading model...',
+                  model: status.model,
+                  container: status.container,
+                })
+                if (status.healthy) {
+                  resolve(status)
+                  return
+                }
+              }
+            } catch {
+              // Controller may be temporarily unreachable during restart
+              setBackendStatus({ status: 'restarting', message: 'Waiting for container...' })
+            }
+            setTimeout(check, pollInterval)
+          }
+          setTimeout(check, pollInterval)
+        })
+      }
+
+      await pollHealth()
+      await fetchModels()
+    } catch (err) {
+      setError(err.message)
+      setBackendStatus({ status: 'error', message: err.message })
+    } finally {
+      setIsRestarting(false)
+    }
+  }
+
   const deleteModel = async (modelId) => {
     setActionLoading(modelId)
     try {
@@ -176,8 +245,13 @@ export function useModels() {
     actionLoading,
     filter,
     setFilter,
+    llmBackend,
+    backendCapabilities,
+    isRestarting,
+    backendStatus,
     downloadModel,
     loadModel,
+    switchModel,
     deleteModel,
     addCustomModel,
     removeCustomModel,

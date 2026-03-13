@@ -138,12 +138,15 @@ services:
       - N8N_URL=${N8N_URL:-http://n8n:5678}
       - DASHBOARD_API_KEY=${DASHBOARD_API_KEY:-}
       - OPENCLAW_TOKEN=${OPENCLAW_TOKEN:-}
+      - MODEL_CONTROLLER_URL=http://model-controller:3003
+      - MODEL_CONTROLLER_SECRET=${MODEL_CONTROLLER_SECRET:-}
     volumes:
       - ./scripts:/dream-server/scripts:ro
       - ./config:/dream-server/config:ro
       - ./extensions:/dream-server/extensions:ro
       - ./.env:/dream-server/.env:ro
       - ./data:/data
+      - ${VLLM_HF_CACHE:-./data/hf-cache}:/data/hf-cache
     deploy:
       resources:
         limits:
@@ -193,6 +196,41 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+  # ============================================
+  # Model Controller (LLM backend restart sidecar)
+  # Only container with Docker socket + .env write
+  # ============================================
+  model-controller:
+    build:
+      context: ./extensions/services/model-controller
+      dockerfile: Dockerfile
+    container_name: dream-model-controller
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./.env:/dream-server/.env
+      - ./data/models:/models:ro
+      - ${VLLM_HF_CACHE:-./data/hf-cache}:/hf-cache:ro
+    environment:
+      - MODEL_CONTROLLER_SECRET=${MODEL_CONTROLLER_SECRET:-}
+      - ENV_FILE_PATH=/dream-server/.env
+      - MODELS_DIR=/models
+      - HF_CACHE_DIR=/hf-cache
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 32M
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 networks:
   default:

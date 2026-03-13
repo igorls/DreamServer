@@ -3,13 +3,14 @@ import {
   Box, Download, Trash2, Check, AlertCircle, Loader2, Play,
   RefreshCw, HardDrive, Zap, Cloud, Server, ChevronDown,
   Eye, EyeOff, ExternalLink, X, Sparkles, Search, Info,
-  AlertTriangle, Plus, Square, Upload, ArrowUpDown
+  AlertTriangle, Plus, Square, Upload, ArrowUpDown, RotateCcw
 } from 'lucide-react'
 import { useModels, useProviders, useOllama } from '../hooks/useModels'
 import { useDownloadProgress } from '../hooks/useDownloadProgress'
 
 const BACKEND_LABELS = {
   'llama-server': 'Local (GGUF)',
+  'vllm': 'vLLM',
   'ollama': 'Ollama',
   'openai': 'OpenAI',
   'anthropic': 'Anthropic',
@@ -18,6 +19,7 @@ const BACKEND_LABELS = {
 
 const BACKEND_ICONS = {
   'llama-server': Server,
+  'vllm': Zap,
   'ollama': Box,
   'openai': Cloud,
   'anthropic': Cloud,
@@ -44,8 +46,9 @@ export default function Models() {
   const downloadProgress = useDownloadProgress()
   const {
     models, gpu, activeModel, loading, error, actionLoading,
-    filter, setFilter, downloadModel, loadModel, deleteModel,
-    addCustomModel, removeCustomModel, refresh
+    filter, setFilter, downloadModel, loadModel, switchModel,
+    deleteModel, addCustomModel, removeCustomModel, refresh,
+    llmBackend, backendCapabilities, isRestarting, backendStatus
   } = useModels()
   const ollama = useOllama()
 
@@ -303,6 +306,7 @@ export default function Models() {
               key={model.id}
               model={model}
               isLoading={actionLoading === model.id}
+              isRestarting={isRestarting}
               onDownload={() => { downloadModel(model.id); downloadProgress.startPolling() }}
               onLoad={() => {
                 if (model.backend === 'ollama') {
@@ -311,6 +315,23 @@ export default function Models() {
                   loadModel(model.id)
                 }
               }}
+              onSwitch={
+                (model.backend === 'llama-server' || model.backend === 'vllm') && model.status === 'downloaded' && backendCapabilities?.requiresRestart
+                  ? () => {
+                      const modelFile = model.backend === 'vllm'
+                        ? model.id  // vLLM uses the HF repo name
+                        : (model.gguf?.filename || model.id)
+                      showConfirm(
+                        'Switch & Restart',
+                        `Switch to "${model.name}"? This will restart the LLM server container (~30s downtime).`,
+                        async () => {
+                          await switchModel(modelFile, model.backend)
+                          showToast(`Switched to ${model.name}`, 'success')
+                        }
+                      )
+                    }
+                  : null
+              }
               onDelete={
                 model.backend === 'ollama'
                   ? () => showConfirm(
@@ -341,6 +362,38 @@ export default function Models() {
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Restart Progress Overlay */}
+      {isRestarting && backendStatus && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-8 max-w-sm w-full mx-4 shadow-2xl text-center">
+            <div className="mb-4">
+              {backendStatus.status === 'healthy' ? (
+                <div className="w-14 h-14 mx-auto bg-green-500/20 rounded-full flex items-center justify-center">
+                  <Check size={28} className="text-green-400" />
+                </div>
+              ) : backendStatus.status === 'error' ? (
+                <div className="w-14 h-14 mx-auto bg-red-500/20 rounded-full flex items-center justify-center">
+                  <AlertCircle size={28} className="text-red-400" />
+                </div>
+              ) : (
+                <div className="w-14 h-14 mx-auto bg-amber-500/20 rounded-full flex items-center justify-center">
+                  <Loader2 size={28} className="text-amber-400 animate-spin" />
+                </div>
+              )}
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-1">
+              {backendStatus.status === 'healthy' ? 'Model Loaded!' : backendStatus.status === 'error' ? 'Restart failed' : 'Switching Model...'}
+            </h3>
+            <p className="text-sm text-zinc-400 mb-2">
+              {backendStatus.message}
+            </p>
+            {backendStatus.model && (
+              <p className="text-xs text-zinc-500 font-mono">{backendStatus.model}</p>
+            )}
+          </div>
         </div>
       )}
 
@@ -597,7 +650,7 @@ function VramMeter({ gpu }) {
 /* Model Card                                                          */
 /* ------------------------------------------------------------------ */
 
-function ModelCard({ model, isLoading, onDownload, onLoad, onDelete }) {
+function ModelCard({ model, isLoading, isRestarting, onDownload, onLoad, onSwitch, onDelete }) {
   const isLoaded = model.status === 'loaded'
   const isDownloaded = model.status === 'downloaded'
   const BackendIcon = BACKEND_ICONS[model.backend] || Server
@@ -725,19 +778,35 @@ function ModelCard({ model, isLoading, onDownload, onLoad, onDelete }) {
             </>
           ) : isDownloaded ? (
             <>
-              <button
-                onClick={onLoad}
-                disabled={model.fits_vram === false}
-                className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all ${
-                  model.fits_vram !== false
-                    ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30'
-                    : 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
-                }`}
-                title={model.fits_vram !== false ? 'Load this model' : 'Not enough VRAM'}
-              >
-                <Play size={14} />
-                Load
-              </button>
+              {onSwitch ? (
+                <button
+                  onClick={onSwitch}
+                  disabled={model.fits_vram === false || isRestarting}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all ${
+                    model.fits_vram !== false && !isRestarting
+                      ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30'
+                      : 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
+                  }`}
+                  title={isRestarting ? 'Restart in progress...' : model.fits_vram !== false ? 'Switch model & restart container' : 'Not enough VRAM'}
+                >
+                  <RotateCcw size={14} />
+                  Switch & Restart
+                </button>
+              ) : (
+                <button
+                  onClick={onLoad}
+                  disabled={model.fits_vram === false}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all ${
+                    model.fits_vram !== false
+                      ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30'
+                      : 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
+                  }`}
+                  title={model.fits_vram !== false ? 'Load this model' : 'Not enough VRAM'}
+                >
+                  <Play size={14} />
+                  Load
+                </button>
+              )}
               <button
                 onClick={onDelete}
                 className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
