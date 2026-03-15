@@ -1668,6 +1668,13 @@ async def download_status(api_key: str = Depends(verify_api_key)):
 # --- Download Proxy (delegates to model-controller) ---
 
 MODEL_CONTROLLER_URL = os.getenv("MODEL_CONTROLLER_URL", "http://model-controller:3003")
+MODEL_CONTROLLER_SECRET = os.getenv("MODEL_CONTROLLER_SECRET", "")
+
+def _mc_headers():
+    """Auth headers for model-controller requests."""
+    if MODEL_CONTROLLER_SECRET:
+        return {"Authorization": f"Bearer {MODEL_CONTROLLER_SECRET}"}
+    return {}
 
 @router.post("/download")
 async def proxy_download(request: Request, api_key: str = Depends(verify_api_key)):
@@ -1683,6 +1690,7 @@ async def proxy_download(request: Request, api_key: str = Depends(verify_api_key
             resp = await client.post(
                 f"{MODEL_CONTROLLER_URL}/download",
                 json=body,
+                headers=_mc_headers(),
             )
             return JSONResponse(content=resp.json(), status_code=resp.status_code)
     except httpx.ConnectError:
@@ -1697,7 +1705,7 @@ async def proxy_get_downloads(api_key: str = Depends(verify_api_key)):
     import httpx
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(f"{MODEL_CONTROLLER_URL}/downloads")
+            resp = await client.get(f"{MODEL_CONTROLLER_URL}/downloads", headers=_mc_headers())
             return JSONResponse(content=resp.json(), status_code=resp.status_code)
     except httpx.ConnectError:
         raise HTTPException(status_code=502, detail="Model controller not reachable")
@@ -1709,7 +1717,7 @@ async def proxy_cancel_download(job_id: str, api_key: str = Depends(verify_api_k
     import httpx
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.delete(f"{MODEL_CONTROLLER_URL}/downloads/{job_id}")
+            resp = await client.delete(f"{MODEL_CONTROLLER_URL}/downloads/{job_id}", headers=_mc_headers())
             return JSONResponse(content=resp.json(), status_code=resp.status_code)
     except httpx.ConnectError:
         raise HTTPException(status_code=502, detail="Model controller not reachable")
