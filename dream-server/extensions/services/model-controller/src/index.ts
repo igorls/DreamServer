@@ -344,44 +344,29 @@ async function downloadGGUF(job: DownloadJob, repo: string, filename: string): P
   }
 }
 
-// --- vLLM Download (switch model + restart; vLLM auto-pulls from HF) ---
+// --- vLLM Download (set model in .env — vLLM auto-pulls from HF on restart) ---
 
 async function downloadVLLM(job: DownloadJob, repo: string): Promise<void> {
   try {
     // vLLM auto-downloads from HuggingFace on startup.
-    // We just need to update the .env and restart the container.
+    // We just set VLLM_MODEL in .env — the actual restart happens
+    // when the user activates/switches to this model.
+    // NOTE: We do NOT call composeUp() here because that would kill
+    // this container (model-controller is a compose service).
     const env = readEnvFile();
     env.set("VLLM_MODEL", repo);
     writeEnvFile(env);
 
-    updateDownload(job.id, {
-      status: "downloading",
-      percent: 10,
-      bytesDownloaded: 0,
-      bytesTotal: 0,
-    });
-
     broadcastWS({
       type: "download:info",
       jobId: job.id,
-      message: `Set VLLM_MODEL=${repo}. Restarting llama-server — vLLM will download automatically.`,
+      message: `Set VLLM_MODEL=${repo}. Click "Activate" to start with this model.`,
     });
 
-    // Restart llama-server so vLLM picks up the new model
-    const result = await composeUp();
-
-    if (result.ok) {
-      updateDownload(job.id, {
-        status: "complete",
-        percent: 100,
-        bytesDownloaded: job.bytesTotal,
-      });
-    } else {
-      updateDownload(job.id, {
-        status: "error",
-        error: `Compose restart failed: ${result.output}`,
-      });
-    }
+    updateDownload(job.id, {
+      status: "complete",
+      percent: 100,
+    });
   } catch (err) {
     updateDownload(job.id, { status: "error", error: String(err) });
   }

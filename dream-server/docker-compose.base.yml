@@ -212,8 +212,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./.env:/dream-server/.env
-      - ./data/models:/models:ro
-      - ${VLLM_HF_CACHE:-./data/hf-cache}:/hf-cache:ro
+      - ./data/models:/models
+      - ${VLLM_HF_CACHE:-./data/hf-cache}:/hf-cache
       - ./:/dream-server            # install dir for compose discovery + overlay writes
       - /usr/bin/docker:/usr/bin/docker:ro  # docker CLI for compose commands
       - /usr/libexec/docker:/usr/libexec/docker:ro  # docker compose plugin
