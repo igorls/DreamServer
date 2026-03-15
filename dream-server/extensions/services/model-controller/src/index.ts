@@ -445,18 +445,10 @@ async function handleSwitchBackend(req: Request): Promise<Response> {
     } catch { /* pgrep not available — skip detection */ }
   }
 
-  // 7. Run docker compose up -d --remove-orphans
-  const composeResult = await composeUp();
-  if (!composeResult.ok) {
-    return Response.json(
-      {
-        error: "Compose up failed",
-        output: composeResult.output,
-        code: "COMPOSE_FAILED",
-      },
-      { status: 502 },
-    );
-  }
+  // 7. Fire compose up in background — we MUST respond before compose
+  //    recreates this container (model-controller gets killed during compose up).
+  //    The frontend polls /backend/status to track progress.
+  composeUp().catch(() => { /* container will be killed — expected */ });
 
   return Response.json({
     status: "switching",
