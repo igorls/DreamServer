@@ -820,7 +820,7 @@ async def test_model(req: TestModelRequest, api_key: str = Depends(verify_api_ke
                     try:
                         chunk = json.loads(data)
                         delta = chunk.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content", "") or delta.get("reasoning_content", "")
+                        content = delta.get("content", "") or delta.get("reasoning_content", "") or delta.get("reasoning", "")
                         if content:
                             if ttft is None:
                                 ttft = time_mod.monotonic() - start_time
