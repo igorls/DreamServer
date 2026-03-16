@@ -245,9 +245,11 @@ check_service() {
   local name=$1
   local url=$2
   local max_attempts=${3:-30}
+  local timeout=${4:-10}  # Timeout per request (default 10s)
   local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
   local i=0
   local lore_idx=$(( RANDOM % ${#LORE_MESSAGES[@]} ))
+  local elapsed=0
 
   if $DRY_RUN; then
     ai "[DRY RUN] Would link ${name} at ${url}"
@@ -256,18 +258,43 @@ check_service() {
 
   printf "  ${GRN}%s${NC} Linking %-20s " "${spin:0:1}" "$name"
   for attempt in $(seq 1 $max_attempts); do
-    if curl -sf "$url" > /dev/null 2>&1; then
+    # Exponential backoff: 2s, 4s, 8s, then 8s for remaining attempts
+    local backoff=2
+    if [[ $attempt -gt 1 ]]; then
+      backoff=$((2 ** (attempt < 4 ? attempt : 4)))
+      [[ $backoff -gt 8 ]] && backoff=8
+    fi
+
+    # Add timeout to prevent indefinite hangs
+    if timeout "$timeout" curl -sf "$url" > /dev/null 2>&1; then
       printf "\r  ${BGRN}✓${NC} %-55s\n" "$name online"
       return 0
     fi
-    printf "\r  ${GRN}%s${NC} Linking %-20s [%ds] " "${spin:$i:1}" "$name" "$((attempt * 2))"
+
+    local curl_exit=$?
+    elapsed=$((elapsed + backoff))
+
+    # Distinguish between timeout (124) and connection refused (7)
+    if [[ $curl_exit -eq 124 ]]; then
+      # Timeout - service may be overloaded or slow
+      printf "\r  ${AMB}⟳${NC} Linking %-20s [%ds] (timeout, retrying) " "$name" "$elapsed"
+    elif [[ $curl_exit -eq 7 ]]; then
+      # Connection refused - service not started yet
+      printf "\r  ${GRN}%s${NC} Linking %-20s [%ds] " "${spin:$i:1}" "$name" "$elapsed"
+    else
+      # Other error (DNS, network, etc.)
+      printf "\r  ${AMB}⟳${NC} Linking %-20s [%ds] (error $curl_exit) " "$name" "$elapsed"
+    fi
+
     i=$(( (i + 1) % ${#spin} ))
-    # Show lore every 4th attempt (~8 seconds)
-    if (( attempt > 0 && attempt % 4 == 0 )); then
+
+    # Show lore every 16 seconds of elapsed time
+    if (( elapsed > 0 && elapsed % 16 == 0 )); then
       printf "\n  ${DGRN}  « %s »${NC}\n" "${LORE_MESSAGES[$lore_idx]}"
       lore_idx=$(( (lore_idx + 1) % ${#LORE_MESSAGES[@]} ))
     fi
-    sleep 2
+
+    sleep "$backoff"
   done
 
   printf "\r  ${AMB}⚠${NC} %-55s\n" "$name delayed (may still be starting)"
