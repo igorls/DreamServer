@@ -20,6 +20,28 @@ SESSIONS_DIR="${SESSIONS_DIR:-$OPENCLAW_DIR/agents/main/sessions}"
 SESSIONS_JSON="$SESSIONS_DIR/sessions.json"
 MAX_SIZE="${MAX_SIZE:-256000}"
 
+usage() {
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Prevents context overflow by pruning OpenClaw session files: removes inactive"
+    echo "sessions and deletes bloated ones (over size threshold), then updates"
+    echo "sessions.json so the gateway creates a fresh session."
+    echo ""
+    echo "Options:"
+    echo "  -h, --help   Show this help and exit."
+    echo ""
+    echo "Environment:"
+    echo "  OPENCLAW_DIR   Base OpenClaw dir (default: \$HOME/dream-server/data/openclaw/home/.openclaw)"
+    echo "  SESSIONS_DIR   Sessions directory (default: \$OPENCLAW_DIR/agents/main/sessions)"
+    echo "  MAX_SIZE       Max session file size in bytes (default: 256000)"
+    echo ""
+    echo "Exit: 0 (always; missing paths are skipped with a log message)."
+}
+
+case "${1:-}" in
+    -h|--help) usage; exit 0 ;;
+esac
+
 # ── Preflight ──────────────────────────────────────────────────
 if [ ! -f "$SESSIONS_JSON" ]; then
     echo "[$(date)] No sessions.json found at $SESSIONS_JSON, skipping"
