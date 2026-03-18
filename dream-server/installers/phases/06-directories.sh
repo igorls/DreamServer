@@ -41,6 +41,14 @@ else
     mkdir -p "$INSTALL_DIR"/data/langfuse/{postgres,clickhouse,redis,minio}
     mkdir -p "$INSTALL_DIR"/config/{n8n,litellm,openclaw,searxng}
 
+    # Fix ownership of config dirs that may have been created by containers
+    # (e.g. SearXNG runs as uid 977 and owns config/searxng/)
+    for _cfg_dir in "$INSTALL_DIR"/config/*/; do
+        if [[ -d "$_cfg_dir" ]] && ! [[ -w "$_cfg_dir" ]]; then
+            sudo chown -R "$(id -u):$(id -g)" "$_cfg_dir" 2>/dev/null || true
+        fi
+    done
+
     # Copy entire source tree to install dir (skip if same directory)
     dream_progress 39 "directories" "Copying source files"
     if [[ "$SCRIPT_DIR" != "$INSTALL_DIR" ]]; then
