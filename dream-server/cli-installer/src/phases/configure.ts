@@ -1,6 +1,6 @@
 // ── Phase 04: Configure ─────────────────────────────────────────────────────
 
-import { type InstallContext, REPO_URL, TIER_MAP } from '../lib/config.ts';
+import { type InstallContext, REPO_URL, REPO_BRANCH, TIER_MAP } from '../lib/config.ts';
 import { exec } from '../lib/shell.ts';
 import { mergeEnv } from '../lib/env.ts';
 import { IS_WINDOWS, IS_MACOS, copyDir, removeDir, getComposeFileSeparator, getPermissionFixHint } from '../lib/platform.ts';
@@ -8,7 +8,7 @@ import * as ui from '../lib/ui.ts';
 import { Spinner } from '../lib/ui.ts';
 import { existsSync, mkdirSync, copyFileSync, readdirSync, readFileSync, chmodSync } from 'node:fs';
 import { join, basename, relative } from 'node:path';
-import { tmpdir } from 'node:os';
+import { tmpdir, cpus as osCpus } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { IS_LINUX } from '../lib/platform.ts';
 
@@ -87,7 +87,7 @@ async function cloneRepo(ctx: InstallContext): Promise<void> {
 
   try {
     const tmpCloneDir = join(tmpdir(), `dream-clone-${Date.now()}`);
-    await exec(['git', 'clone', '--depth', '1', REPO_URL, tmpCloneDir], { timeout: 120_000 });
+    await exec(['git', 'clone', '--depth', '1', '--branch', REPO_BRANCH, REPO_URL, tmpCloneDir], { timeout: 120_000 });
 
     const srcDir = join(tmpCloneDir, 'dream-server');
     if (!existsSync(srcDir)) {
@@ -370,6 +370,9 @@ async function generateEnv(ctx: InstallContext, composeFiles: string[]): Promise
     `# ── System ───────────────────────────────────────────────────`,
     `TIMEZONE=${Intl.DateTimeFormat().resolvedOptions().timeZone}`,
     `ENABLE_DEVTOOLS=${ctx.features.devtools}`,
+    ``,
+    `# ── Resource Limits ──────────────────────────────────────────`,
+    `LLAMA_CPU_LIMIT=${Math.max(1, osCpus().length).toFixed(1)}`,
   );
 
   // Add vLLM-specific env vars

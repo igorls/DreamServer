@@ -34,8 +34,19 @@ export async function getComposeCommand(): Promise<string[]> {
 
   // Try sudo (Linux/macOS only — sudo doesn't exist on Windows)
   if (!IS_WINDOWS) {
+    // First try with -n (non-interactive) to avoid blocking
     try {
       const info = await exec(['sudo', '-n', 'docker', 'info'], { throwOnError: false, timeout: 5000 });
+      if (info.exitCode === 0) {
+        _cachedCmd = ['sudo', 'docker', 'compose'];
+        return _cachedCmd;
+      }
+    } catch { /* skip */ }
+
+    // Fallback: try without -n — sudo password may be cached from earlier in the session
+    // (e.g. after autoInstallDocker used sudo). This won't block if password is cached.
+    try {
+      const info = await exec(['sudo', 'docker', 'info'], { throwOnError: false, timeout: 10_000 });
       if (info.exitCode === 0) {
         _cachedCmd = ['sudo', 'docker', 'compose'];
         return _cachedCmd;

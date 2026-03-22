@@ -1,10 +1,11 @@
 // ── Phase 01: Preflight ─────────────────────────────────────────────────────
 
 import { type InstallContext } from '../lib/config.ts';
-import { exec, commandExists } from '../lib/shell.ts';
+import { exec, execStream, commandExists } from '../lib/shell.ts';
 import { IS_WINDOWS, IS_MACOS, getOsName, getDockerInstallHint, getDockerDaemonFixHint } from '../lib/platform.ts';
+import { resetCache as resetDockerCache } from '../lib/docker.ts';
 import * as ui from '../lib/ui.ts';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 export interface PreflightResult {
   os: string;
@@ -69,6 +70,12 @@ export async function preflight(ctx: InstallContext): Promise<PreflightResult> {
     commandExists('nvidia-smi'),
   ]);
 
+  // Fix stale Docker Desktop context — if Docker Desktop was previously installed
+  // but only Docker Engine is active, the CLI may point to a non-existent socket.
+  if (!IS_WINDOWS && !IS_MACOS) {
+    await fixStaleDockerContext();
+  }
+
   // Docker: verify we can actually talk to the daemon, not just that the binary exists
   let hasDocker = false;
   let hasDockerCompose = false;
@@ -90,18 +97,40 @@ export async function preflight(ctx: InstallContext): Promise<PreflightResult> {
         ui.info('Docker not found — attempting automatic installation...');
         const installed = await autoInstallDocker();
         if (installed) {
-          // Re-check after install
+          hasDocker = true;
+          // Reset cached compose command — the first check cached a failure
+          resetDockerCache();
+          // After fresh install, group membership won't apply to the running
+          // process, so we must use sudo for the remainder of this session.
+          // The sudo password is still cached from the install step.
           try {
             const { getComposeCommand } = await import('../lib/docker.ts');
             const composeCmd = await getComposeCommand();
-            hasDocker = true;
             hasDockerCompose = true;
             dockerRunning = true;
             ui.ok(`Docker installed and ready (${composeCmd.join(' ')})`);
           } catch {
-            hasDocker = true;
-            ui.warn('Docker installed but daemon not responding — may need a re-login for group permissions');
-            ui.info('Fix: sudo usermod -aG docker $USER && newgrp docker');
+            ui.warn('Docker installed but daemon not responding via compose detection');
+            ui.info('This is expected on a fresh install — trying direct sudo access...');
+            // Fallback: verify daemon is reachable via sudo (password cached from install)
+            const directExit = await execStream(['sudo', 'docker', 'info'], { timeout: 10_000 });
+            if (directExit === 0) {
+              hasDockerCompose = true;
+              dockerRunning = true;
+              // Force sudo compose as the compose command for this session
+              resetDockerCache();
+              // Warm the cache — getComposeCommand will now find sudo docker works
+              try {
+                const { getComposeCommand } = await import('../lib/docker.ts');
+                const composeCmd = await getComposeCommand();
+                ui.ok(`Docker installed and ready (${composeCmd.join(' ')})`);
+              } catch {
+                ui.ok('Docker installed and daemon reachable via sudo');
+              }
+            } else {
+              ui.warn('Docker installed but daemon not responding — may need a re-login');
+              ui.info('Fix: sudo systemctl start docker && sudo usermod -aG docker $USER && newgrp docker');
+            }
           }
         } else {
           ui.fail('Docker auto-installation failed');
@@ -113,12 +142,54 @@ export async function preflight(ctx: InstallContext): Promise<PreflightResult> {
       }
     } else {
       hasDocker = true;
-      // Binary exists but daemon access failed
-      ui.fail('Cannot connect to Docker daemon');
-      console.log('');
-      ui.info('Fix with one of:');
-      for (const hint of getDockerDaemonFixHint()) {
-        console.log(`     ${hint}`);
+      // Binary exists but daemon access failed — try to start it
+      if (!IS_WINDOWS && !ctx.dryRun) {
+        ui.info('Docker daemon not responding — attempting to start...');
+        // Use execStream so sudo password prompt is visible to the user
+        const startExit = await execStream(['sudo', 'systemctl', 'start', 'docker'], { timeout: 30_000 });
+        if (startExit === 0) {
+          // Daemon started, now re-check compose access
+          resetDockerCache();
+          try {
+            const { getComposeCommand } = await import('../lib/docker.ts');
+            const composeCmd = await getComposeCommand();
+            hasDockerCompose = true;
+            dockerRunning = true;
+            ui.ok(`Docker daemon started (${composeCmd.join(' ')})`);
+          } catch {
+            // Daemon running but user can't access — try adding to group
+            const user = process.env.SUDO_USER || process.env.USER || '';
+            if (user) {
+              await execStream(['sudo', 'usermod', '-aG', 'docker', user]);
+            }
+            // Use sudo for this session
+            const directExit = await execStream(['sudo', 'docker', 'info'], { timeout: 10_000 });
+            if (directExit === 0) {
+              hasDockerCompose = true;
+              dockerRunning = true;
+              resetDockerCache();
+              ui.ok('Docker daemon started (sudo docker compose)');
+              ui.info('Run "newgrp docker" after install to use Docker without sudo');
+            } else {
+              ui.fail('Docker daemon started but access denied');
+              ui.info('Fix: sudo usermod -aG docker $USER && newgrp docker');
+            }
+          }
+        } else {
+          ui.fail('Cannot connect to Docker daemon and failed to start it');
+          console.log('');
+          ui.info('Fix with one of:');
+          for (const hint of getDockerDaemonFixHint()) {
+            console.log(`     ${hint}`);
+          }
+        }
+      } else {
+        ui.fail('Cannot connect to Docker daemon');
+        console.log('');
+        ui.info('Fix with one of:');
+        for (const hint of getDockerDaemonFixHint()) {
+          console.log(`     ${hint}`);
+        }
       }
     }
     if (!dockerRunning && !ctx.dryRun && !ctx.force) {
@@ -178,7 +249,6 @@ export async function preflight(ctx: InstallContext): Promise<PreflightResult> {
  * Mirrors the bash installer's 05-docker.sh behavior.
  */
 async function autoInstallDocker(): Promise<boolean> {
-  const { exec } = await import('../lib/shell.ts');
   const { mkdtempSync, rmSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
@@ -187,7 +257,7 @@ async function autoInstallDocker(): Promise<boolean> {
   const tmpFile = join(tmpDir, 'install-docker.sh');
 
   try {
-    // Download Docker's official install script
+    // Download Docker's official install script (curl output is non-interactive, pipe is fine)
     const dl = await exec(
       ['curl', '-fsSL', 'https://get.docker.com', '-o', tmpFile],
       { throwOnError: false, timeout: 30_000 },
@@ -197,26 +267,27 @@ async function autoInstallDocker(): Promise<boolean> {
       return false;
     }
 
-    // Run the install script with sudo
+    // Run the install script with sudo — use execStream so the password prompt
+    // and install progress are visible to the user in the terminal
     ui.step('Installing Docker Engine (this may take a minute)...');
-    const install = await exec(
+    const installExit = await execStream(
       ['sudo', 'sh', tmpFile],
-      { throwOnError: false, timeout: 300_000 },
+      { timeout: 300_000 },
     );
 
-    if (install.exitCode !== 0) {
+    if (installExit !== 0) {
       return false;
     }
 
     // Add current user to docker group
     const user = process.env.SUDO_USER || process.env.USER || '';
     if (user) {
-      await exec(['sudo', 'usermod', '-aG', 'docker', user], { throwOnError: false });
+      await execStream(['sudo', 'usermod', '-aG', 'docker', user]);
     }
 
-    // Start Docker daemon
-    await exec(['sudo', 'systemctl', 'start', 'docker'], { throwOnError: false, timeout: 15_000 });
-    await exec(['sudo', 'systemctl', 'enable', 'docker'], { throwOnError: false, timeout: 5_000 });
+    // Start and enable Docker daemon
+    await execStream(['sudo', 'systemctl', 'start', 'docker'], { timeout: 15_000 });
+    await execStream(['sudo', 'systemctl', 'enable', 'docker'], { timeout: 5_000 });
 
     ui.ok('Docker Engine installed');
     return true;
@@ -233,53 +304,103 @@ async function autoInstallDocker(): Promise<boolean> {
  * See: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
  */
 async function autoInstallNvidiaCTK(): Promise<boolean> {
-  const { exec } = await import('../lib/shell.ts');
-
   try {
     ui.step('Installing NVIDIA Container Toolkit...');
 
-    // Add NVIDIA Container Toolkit repository
-    const addRepo = await exec(
+    // Add NVIDIA Container Toolkit repository — use execStream for sudo prompts
+    const addRepoExit = await execStream(
       ['sudo', 'sh', '-c',
         'curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor --yes -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg ' +
         '&& curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | ' +
         'sed "s#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g" | ' +
         'tee /etc/apt/sources.list.d/nvidia-container-toolkit.list > /dev/null'],
-      { throwOnError: false, timeout: 30_000 },
+      { timeout: 30_000 },
     );
 
-    if (addRepo.exitCode !== 0) {
+    if (addRepoExit !== 0) {
       ui.warn('Could not add NVIDIA Container Toolkit repository');
       return false;
     }
 
     // Install the toolkit
-    const install = await exec(
+    const updateExit = await execStream(
       ['sudo', 'apt-get', 'update', '-qq'],
-      { throwOnError: false, timeout: 60_000 },
+      { timeout: 60_000 },
     );
-    if (install.exitCode !== 0) return false;
+    if (updateExit !== 0) return false;
 
-    const installPkg = await exec(
+    const installPkgExit = await execStream(
       ['sudo', 'apt-get', 'install', '-y', '-qq', 'nvidia-container-toolkit'],
-      { throwOnError: false, timeout: 120_000 },
+      { timeout: 120_000 },
     );
-    if (installPkg.exitCode !== 0) return false;
+    if (installPkgExit !== 0) return false;
 
     // Configure Docker runtime
-    await exec(
+    await execStream(
       ['sudo', 'nvidia-ctk', 'runtime', 'configure', '--runtime=docker'],
-      { throwOnError: false, timeout: 10_000 },
+      { timeout: 10_000 },
     );
 
     // Restart Docker to pick up the new runtime
-    await exec(
+    await execStream(
       ['sudo', 'systemctl', 'restart', 'docker'],
-      { throwOnError: false, timeout: 15_000 },
+      { timeout: 15_000 },
     );
 
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Detect and fix stale Docker Desktop context.
+ *
+ * When Docker Desktop is uninstalled (or was never properly removed), the user's
+ * ~/.docker/config.json may still point to `desktop-linux` context, which uses a
+ * socket at ~/.docker/desktop/docker.sock that no longer exists.  Meanwhile,
+ * Docker Engine is running just fine on /var/run/docker.sock.
+ *
+ * If we detect this mismatch, reset the context to `default` so docker commands
+ * use the standard /var/run/docker.sock path.
+ */
+async function fixStaleDockerContext(): Promise<void> {
+  const { homedir } = await import('node:os');
+  const { join } = await import('node:path');
+
+  const dockerConfigPath = join(homedir(), '.docker', 'config.json');
+  if (!existsSync(dockerConfigPath)) return;
+
+  try {
+    const raw = readFileSync(dockerConfigPath, 'utf-8');
+    const config = JSON.parse(raw);
+    if (config.currentContext !== 'desktop-linux') return;
+
+    // Check if the Desktop socket actually exists
+    const desktopSocket = join(homedir(), '.docker', 'desktop', 'docker.sock');
+    if (existsSync(desktopSocket)) return; // Docker Desktop is actually running
+
+    // Desktop socket is missing but the standard socket exists — fix the context
+    if (!existsSync('/var/run/docker.sock')) return;
+
+    ui.warn('Stale Docker Desktop context detected — resetting to default');
+    ui.info('Docker Desktop socket missing, using Docker Engine on /var/run/docker.sock');
+
+    // Reset via docker context use, or edit the config file directly
+    const contextResult = await exec(
+      ['docker', 'context', 'use', 'default'],
+      { throwOnError: false, timeout: 5_000, env: { ...process.env, DOCKER_HOST: 'unix:///var/run/docker.sock' } },
+    );
+    if (contextResult.exitCode === 0) {
+      ui.ok('Docker context reset to default');
+    } else {
+      // Fallback: edit config.json directly
+      config.currentContext = 'default';
+      const { writeFileSync } = await import('node:fs');
+      writeFileSync(dockerConfigPath, JSON.stringify(config, null, '\t') + '\n');
+      ui.ok('Docker config updated to use default context');
+    }
+  } catch {
+    // Non-critical — don't block the installer
   }
 }
