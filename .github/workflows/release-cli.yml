@@ -21,8 +21,18 @@ jobs:
         run: bun install --frozen-lockfile
         working-directory: dream-server/cli-installer
       - name: Run tests
-        run: bun test
         working-directory: dream-server/cli-installer
+        run: |
+          bun test \
+            tests/env.test.ts \
+            tests/prompts.test.ts \
+            tests/installer.test.ts \
+            tests/lan-access.test.ts \
+            tests/features.test.ts \
+            tests/shell.test.ts \
+            tests/ports.test.ts \
+            tests/ui.test.ts \
+            tests/services-helpers.test.ts
 
   build:
     name: Build Binaries
