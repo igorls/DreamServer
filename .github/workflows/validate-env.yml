@@ -27,86 +27,66 @@ jobs:
 
       - name: Generate .env for tier ${{ matrix.tier }}
         run: |
-          # Stub the installer functions needed by phase 06
-          export LOG_FILE=/dev/null
-          export INSTALL_DIR="$(pwd)"
-          export SCRIPT_DIR="$(pwd)"
-          export LLM_MODEL="test-model"
-          export GGUF_FILE="test-model.gguf"
-          export MAX_CONTEXT=4096
-          export N_GPU_LAYERS=0
-          export GPU_BACKEND="cpu"
-          export DREAM_TIER="${{ matrix.tier }}"
-          export HW_CLASS="cpu"
-
-          # Generate a .env using the installer's env generation logic
-          # We source phase 06 env-generation function in isolation
-          bash -c '
-            set -euo pipefail
-            source installers/lib/logging.sh 2>/dev/null || {
-              log() { echo "[INFO] $1"; }
-              warn() { echo "[WARN] $1"; }
-              error() { echo "[ERROR] $1"; }
-              ai() { echo "$1"; }
-              ai_ok() { echo "$1"; }
-              ai_warn() { echo "$1"; }
-              dream_progress() { true; }
-            }
-            # Generate minimal .env with all expected keys
-            cat > .env << ENVEOF
-          # Test .env for tier ${{ matrix.tier }}
-          DREAM_VERSION=2.1.0
-          DREAM_TIER=${{ matrix.tier }}
-          GPU_BACKEND=cpu
-          HW_CLASS=cpu
+          cat > .env << 'ENVEOF'
+          DREAM_VERSION=2.3.4
+          DREAM_MODE=local
           LLM_API_URL=http://llama-server:8080
+          GPU_BACKEND=cpu
           LLM_MODEL=test-model
           GGUF_FILE=test-model.gguf
+          CTX_SIZE=4096
           MAX_CONTEXT=4096
           N_GPU_LAYERS=0
+          LLM_BACKEND=llamacpp
+          ANTHROPIC_API_KEY=
+          OPENAI_API_KEY=
+          TOGETHER_API_KEY=
+          LLAMA_SERVER_PORT=8080
           OLLAMA_PORT=11434
+          WEBUI_PORT=3000
           DASHBOARD_PORT=3001
           DASHBOARD_API_PORT=3002
-          OPEN_WEBUI_PORT=3000
           N8N_PORT=5678
-          PERPLEXICA_PORT=3004
-          COMFYUI_PORT=8188
-          LITELLM_PORT=4000
-          LITELLM_KEY=sk-test-key
-          LITELLM_MASTER_KEY=sk-test-master
-          WHISPER_MODEL=base
-          WHISPER_PORT=9300
-          TTS_PORT=8860
+          WHISPER_PORT=9000
+          TTS_PORT=8880
           QDRANT_PORT=6333
-          EMBEDDINGS_PORT=8800
-          SEARXNG_PORT=8080
-          APE_PORT=7890
-          OPENCLAW_PORT=3100
-          OPENCLAW_CONFIG=prosumer.json
-          OPENCLAW_API_KEY=sk-test-openclaw
-          PRIVACY_SHIELD_PORT=8085
-          TOKEN_SPY_PORT=3003
-          LIVEKIT_PORT=7880
-          LIVEKIT_API_KEY=devkey
-          LIVEKIT_API_SECRET=devsecret
-          LANGFUSE_PORT=3005
-          LANGFUSE_POSTGRES_PORT=5433
-          LANGFUSE_CLICKHOUSE_PORT=9005
-          LANGFUSE_CLICKHOUSE_HTTP=8124
-          LANGFUSE_REDIS_PORT=6380
-          LANGFUSE_MINIO_PORT=9010
-          LANGFUSE_MINIO_CONSOLE_PORT=9011
-          LANGFUSE_ENCRYPTION_KEY=test-key-32chars-long-enough-here
-          LANGFUSE_SALT=test-salt-value
-          LANGFUSE_NEXTAUTH_SECRET=test-nextauth-secret
-          LANGFUSE_NEXTAUTH_URL=http://localhost:3005
-          LANGFUSE_POSTGRES_PASSWORD=test-pg-pass
-          LANGFUSE_CLICKHOUSE_PASSWORD=test-ch-pass
-          LANGFUSE_MINIO_ROOT_USER=minio
-          LANGFUSE_MINIO_ROOT_PASSWORD=test-minio-pass
-          LANGFUSE_TELEMETRY_ENABLED=false
+          QDRANT_GRPC_PORT=6334
+          EMBEDDINGS_PORT=8090
+          LITELLM_PORT=4000
+          OPENCLAW_PORT=7860
+          SEARXNG_PORT=8888
+          COMFYUI_PORT=8188
+          TOKEN_SPY_PORT=3005
+          OPENCODE_PORT=3003
+          SHIELD_PORT=8085
+          LANGFUSE_PORT=3006
+          WEBUI_SECRET=test-webui-secret-32chars
+          N8N_USER=admin
+          N8N_PASS=test-n8n-pass
+          LITELLM_KEY=sk-test-key
+          OPENCLAW_TOKEN=test-openclaw-token
+          DASHBOARD_API_KEY=test-dashboard-key
+          OPENCODE_SERVER_PASSWORD=test-opencode-pass
+          DIFY_SECRET_KEY=test-dify-secret
+          LIVEKIT_API_KEY=devkey-test
+          LIVEKIT_API_SECRET=devsecret-test
+          WHISPER_MODEL=base
+          TTS_VOICE=en_US-lessac-medium
+          WEBUI_AUTH=true
+          ENABLE_WEB_SEARCH=true
+          WEB_SEARCH_ENGINE=searxng
+          N8N_AUTH=true
+          N8N_HOST=localhost
+          N8N_WEBHOOK_URL=http://localhost:5678
+          TIMEZONE=UTC
+          LLAMA_CPU_LIMIT=4.0
+          COMPOSE_FILE=docker-compose.base.yml
+          LAN_ACCESS=false
+          ENABLE_DEVTOOLS=true
           ENVEOF
-          '
+
+          # Inject the tier (uses shell variable expansion)
+          echo "TIER=${{ matrix.tier }}" >> .env
 
       - name: Validate .env against schema
         run: |
