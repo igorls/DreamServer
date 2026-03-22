@@ -287,14 +287,30 @@ async function toggleLanAccess(installDir: string, enable: boolean): Promise<voi
   console.log('');
   if (enable) {
     const { networkInterfaces } = await import('node:os');
+    const envContent2 = readFileSync(envPath, 'utf-8');
+    const parsed = parseEnv(envContent2);
+    const dashPort = parsed.DASHBOARD_PORT || '3001';
+    const webuiPort = parsed.WEBUI_PORT || '3000';
+
     const nets = networkInterfaces();
+    const lanIps: string[] = [];
     for (const name of Object.keys(nets)) {
       for (const net of nets[name] || []) {
-        if (net.family === 'IPv4' && !net.internal) {
-          ui.ok(`LAN access enabled — services available at http://${net.address}`);
-          break;
+        // Skip loopback, IPv6, and Docker bridge IPs (172.x)
+        if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('172.')) {
+          lanIps.push(net.address);
         }
       }
+    }
+
+    if (lanIps.length > 0) {
+      ui.ok('LAN access enabled');
+      console.log('');
+      const ip = lanIps[0];
+      ui.table([
+        ['Dashboard', `http://${ip}:${dashPort}`],
+        ['Chat', `http://${ip}:${webuiPort}`],
+      ]);
     }
   } else {
     ui.ok('LAN access disabled — services bound to localhost only');
