@@ -92,6 +92,13 @@ export async function configure(ctx: InstallContext): Promise<void> {
   // Generate .env (or merge on re-install)
   await generateEnv(ctx, composeFiles);
 
+  // Patch port bindings for LAN access if requested
+  if (ctx.lanAccess) {
+    const { setLanAccess } = await import('../lib/lan-access.ts');
+    const patched = setLanAccess(ctx.installDir, true);
+    ui.ok(`LAN access enabled — patched ${patched} compose files (0.0.0.0)`);
+  }
+
   // Create data directories with correct ownership
   await setupDataDirs(ctx);
 
@@ -394,6 +401,7 @@ async function generateEnv(ctx: InstallContext, composeFiles: string[]): Promise
     `# ── System ───────────────────────────────────────────────────`,
     `TIMEZONE=${Intl.DateTimeFormat().resolvedOptions().timeZone}`,
     `ENABLE_DEVTOOLS=${ctx.features.devtools}`,
+    `LAN_ACCESS=${ctx.lanAccess}`,
     ``,
     `# ── Resource Limits ──────────────────────────────────────────`,
     `LLAMA_CPU_LIMIT=${Math.max(1, osCpus().length).toFixed(1)}`,

@@ -31,6 +31,7 @@ program
   .option('--devtools', 'Install AI developer tools (Claude Code, Codex, OpenCode)')
   .option('--dir <path>', 'Installation directory', DEFAULT_INSTALL_DIR)
   .option('--offline', 'Configure for fully offline/air-gapped operation (M1 mode)')
+  .option('--lan-access', 'Bind services to 0.0.0.0 for LAN access (default: localhost only)')
   .action(install);
 
 program
@@ -44,6 +45,7 @@ program
   .description('Reconfigure features, tier, or model')
   .option('--features', 'Configure features only')
   .option('--tier', 'Configure tier/model only')
+  .option('--lan-access <action>', 'Enable or disable LAN access (enable|disable)')
   .option('--dir <path>', 'Installation directory', DEFAULT_INSTALL_DIR)
   .action(config);
 

@@ -188,22 +188,28 @@ export function showSuccess(ctx: InstallContext, ports: Record<string, number>, 
     ['Chat', `http://localhost:${ports.WEBUI_PORT}`],
   ]);
 
-  if (localIP) {
-    console.log('');
-    ui.info('LAN access:');
-    ui.table([
-      ['Dashboard', `http://${localIP}:${ports.DASHBOARD_PORT}`],
-      ['Chat', `http://${localIP}:${ports.WEBUI_PORT}`],
-    ]);
-  }
+  if (ctx.lanAccess) {
+    if (localIP) {
+      console.log('');
+      ui.info('LAN access:');
+      ui.table([
+        ['Dashboard', `http://${localIP}:${ports.DASHBOARD_PORT}`],
+        ['Chat', `http://${localIP}:${ports.WEBUI_PORT}`],
+      ]);
+    }
 
-  if (ctx.tailscaleIp) {
+    if (ctx.tailscaleIp) {
+      console.log('');
+      ui.ok('Tailscale access (secure, no port forwarding):');
+      ui.table([
+        ['Dashboard', `http://${ctx.tailscaleIp}:${ports.DASHBOARD_PORT}`],
+        ['Chat', `http://${ctx.tailscaleIp}:${ports.WEBUI_PORT}`],
+      ]);
+    }
+  } else {
     console.log('');
-    ui.ok('Tailscale access (secure, no port forwarding):');
-    ui.table([
-      ['Dashboard', `http://${ctx.tailscaleIp}:${ports.DASHBOARD_PORT}`],
-      ['Chat', `http://${ctx.tailscaleIp}:${ports.WEBUI_PORT}`],
-    ]);
+    ui.info('Services are bound to localhost only.');
+    ui.info('Enable LAN access: dream-installer config --lan-access enable');
   }
 
   console.log('');

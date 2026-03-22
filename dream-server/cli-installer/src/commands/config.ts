@@ -13,11 +13,13 @@ import { select, multiSelect } from '../lib/prompts.ts';
 import * as ui from '../lib/ui.ts';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { setLanAccess } from '../lib/lan-access.ts';
 
 export interface ConfigOptions {
   dir?: string;
   features?: boolean;
   tier?: boolean;
+  lanAccess?: string;
 }
 
 export async function config(opts: ConfigOptions): Promise<void> {
@@ -28,6 +30,17 @@ export async function config(opts: ConfigOptions): Promise<void> {
     ui.fail('No Dream Server installation found');
     ui.info('Run: dream-installer install');
     process.exit(1);
+  }
+
+  // Handle --lan-access enable|disable directly (non-interactive shortcut)
+  if (opts.lanAccess) {
+    const action = opts.lanAccess.toLowerCase();
+    if (action !== 'enable' && action !== 'disable') {
+      ui.fail('Invalid value. Use: dream-installer config --lan-access enable|disable');
+      process.exit(1);
+    }
+    await toggleLanAccess(installDir, action === 'enable');
+    return;
   }
 
   ui.header('Dream Server Configuration');
@@ -45,13 +58,20 @@ export async function config(opts: ConfigOptions): Promise<void> {
 
   // Show what to configure if no specific flag
   if (!opts.features && !opts.tier) {
+    const lanState = getEnv('LAN_ACCESS') === 'true' ? 'enabled' : 'disabled';
     const choice = await select('What would you like to configure?', [
       { label: 'Features', description: 'Enable/disable Voice, Workflows, RAG, OpenClaw' },
       { label: 'Tier / Model', description: `Currently: ${getEnv('LLM_MODEL') || 'unknown'}` },
+      { label: 'LAN Access', description: `Currently: ${lanState}` },
       { label: 'Both', description: 'Change features and model' },
     ]);
-    opts.features = choice === 0 || choice === 2;
-    opts.tier = choice === 1 || choice === 2;
+    if (choice === 2) {
+      const enable = lanState !== 'enabled';
+      await toggleLanAccess(installDir, enable);
+      return;
+    }
+    opts.features = choice === 0 || choice === 3;
+    opts.tier = choice === 1 || choice === 3;
   }
 
   // ── Feature configuration ──
@@ -229,5 +249,55 @@ export async function config(opts: ConfigOptions): Promise<void> {
     await nativeMetal(ctx);
   }
 
+  console.log('');
+}
+
+/**
+ * Toggle LAN access on/off — patches compose files, updates .env, restarts containers.
+ */
+async function toggleLanAccess(installDir: string, enable: boolean): Promise<void> {
+  const envPath = join(installDir, '.env');
+
+  ui.header(`${enable ? 'Enabling' : 'Disabling'} LAN Access`);
+  console.log('');
+
+  // Patch compose files
+  const patched = setLanAccess(installDir, enable);
+  const bindAddr = enable ? '0.0.0.0' : '127.0.0.1';
+  ui.ok(`Patched ${patched} compose files → ${bindAddr}`);
+
+  // Update .env
+  let envContent = readFileSync(envPath, 'utf-8');
+  envContent = setEnvValue(envContent, 'LAN_ACCESS', String(enable));
+  writeFileSync(envPath, envContent);
+  ui.ok('Updated .env');
+
+  // Restart services
+  console.log('');
+  ui.step('Restarting services...');
+  try {
+    const composeCmd = await getComposeCommand();
+    await execStream([...composeCmd, 'up', '-d', '--remove-orphans'], { cwd: installDir });
+    ui.ok('Services restarted');
+  } catch {
+    ui.fail('Docker not available — restart manually');
+    ui.info(`cd ${installDir} && docker compose up -d`);
+  }
+
+  console.log('');
+  if (enable) {
+    const { networkInterfaces } = await import('node:os');
+    const nets = networkInterfaces();
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name] || []) {
+        if (net.family === 'IPv4' && !net.internal) {
+          ui.ok(`LAN access enabled — services available at http://${net.address}`);
+          break;
+        }
+      }
+    }
+  } else {
+    ui.ok('LAN access disabled — services bound to localhost only');
+  }
   console.log('');
 }

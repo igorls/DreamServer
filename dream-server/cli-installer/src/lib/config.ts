@@ -142,6 +142,7 @@ export interface InstallContext {
   };
   tailscaleIp: string | null;
   offlineMode: boolean;
+  lanAccess: boolean;
   /** URL of an externally-managed LLM inference server (Ollama, vLLM, etc.) */
   externalLlmUrl: string | null;
 }
@@ -160,6 +161,7 @@ export function createDefaultContext(): InstallContext {
     system: { os: getOsName(), distro: '', ramGB: 0, diskGB: 0, arch: process.arch },
     tailscaleIp: null,
     offlineMode: false,
+    lanAccess: false,
     externalLlmUrl: null,
   };
 }

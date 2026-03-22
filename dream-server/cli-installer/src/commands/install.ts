@@ -33,6 +33,7 @@ export interface InstallOptions {
   openclaw?: boolean;
   devtools?: boolean;
   offline?: boolean;
+  lanAccess?: boolean;
   dir?: string;
 }
 
@@ -50,6 +51,7 @@ export async function install(opts: InstallOptions): Promise<void> {
   if (opts.tier) ctx.tier = opts.tier;
   if (opts.dir) ctx.installDir = opts.dir;
   ctx.offlineMode = opts.offline ?? false;
+  ctx.lanAccess = opts.lanAccess ?? false;
   if (opts.all) {
     ctx.features = { ...FEATURE_PRESETS.full };
   } else {
@@ -179,6 +181,7 @@ function loadFeaturesFromEnv(ctx: InstallContext): void {
     if (env.ENABLE_WEB_SEARCH_STACK !== undefined) ctx.features.webSearch = toBool(env.ENABLE_WEB_SEARCH_STACK);
     if (env.ENABLE_LITELLM !== undefined) ctx.features.litellm = toBool(env.ENABLE_LITELLM);
     if (env.OFFLINE_MODE !== undefined) ctx.offlineMode = toBool(env.OFFLINE_MODE);
+    if (env.LAN_ACCESS !== undefined) ctx.lanAccess = toBool(env.LAN_ACCESS);
 
     if (env.GPU_BACKEND) ctx.gpu.backend = env.GPU_BACKEND as 'nvidia' | 'amd' | 'apple' | 'cpu';
 
