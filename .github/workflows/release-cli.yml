@@ -1,0 +1,114 @@
+name: Release CLI Installer
+
+on:
+  push:
+    tags:
+      - 'cli-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        working-directory: dream-server/cli-installer
+      - name: Run tests
+        run: bun test
+        working-directory: dream-server/cli-installer
+
+  build:
+    name: Build Binaries
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        working-directory: dream-server/cli-installer
+
+      - name: Build all targets
+        working-directory: dream-server/cli-installer
+        run: |
+          mkdir -p dist
+
+          echo "Building linux-x64..."
+          bun build --compile --target=bun-linux-x64 src/index.ts --outfile dist/dream-installer-linux-x64
+
+          echo "Building linux-arm64..."
+          bun build --compile --target=bun-linux-arm64 src/index.ts --outfile dist/dream-installer-linux-arm64
+
+          echo "Building darwin-x64..."
+          bun build --compile --target=bun-darwin-x64 src/index.ts --outfile dist/dream-installer-macos-x64
+
+          echo "Building darwin-arm64..."
+          bun build --compile --target=bun-darwin-arm64 src/index.ts --outfile dist/dream-installer-macos-arm64
+
+          echo "Building windows-x64..."
+          bun build --compile --target=bun-windows-x64 src/index.ts --outfile dist/dream-installer-windows-x64.exe
+
+      - name: Generate SHA256 checksums
+        working-directory: dream-server/cli-installer/dist
+        run: |
+          for f in dream-installer-*; do
+            sha256sum "$f" > "${f}.sha256"
+            echo "$(cat "${f}.sha256")"
+          done
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#cli-}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "CLI Installer ${{ steps.version.outputs.version }}"
+          body: |
+            ## Dream Server CLI Installer ${{ steps.version.outputs.version }}
+
+            ### Quick Install
+
+            **Linux (x64):**
+            ```bash
+            curl -fSL https://github.com/${{ github.repository }}/releases/latest/download/dream-installer-linux-x64 -o dream-installer && chmod +x dream-installer
+            ./dream-installer install
+            ```
+
+            **macOS (Apple Silicon):**
+            ```bash
+            curl -fSL https://github.com/${{ github.repository }}/releases/latest/download/dream-installer-macos-arm64 -o dream-installer && chmod +x dream-installer
+            ./dream-installer install
+            ```
+
+            **Windows (PowerShell):**
+            ```powershell
+            Invoke-WebRequest -Uri "https://github.com/${{ github.repository }}/releases/latest/download/dream-installer-windows-x64.exe" -OutFile dream-installer.exe
+            .\dream-installer.exe install
+            ```
+
+            ### Binaries
+
+            All binaries include SHA256 checksums for integrity verification.
+          files: |
+            dream-server/cli-installer/dist/dream-installer-linux-x64
+            dream-server/cli-installer/dist/dream-installer-linux-x64.sha256
+            dream-server/cli-installer/dist/dream-installer-linux-arm64
+            dream-server/cli-installer/dist/dream-installer-linux-arm64.sha256
+            dream-server/cli-installer/dist/dream-installer-macos-x64
+            dream-server/cli-installer/dist/dream-installer-macos-x64.sha256
+            dream-server/cli-installer/dist/dream-installer-macos-arm64
+            dream-server/cli-installer/dist/dream-installer-macos-arm64.sha256
+            dream-server/cli-installer/dist/dream-installer-windows-x64.exe
+            dream-server/cli-installer/dist/dream-installer-windows-x64.exe.sha256
+          draft: false
+          prerelease: false

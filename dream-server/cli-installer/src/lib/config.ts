@@ -2,7 +2,7 @@
 
 export const VERSION = '1.0.0';
 export const REPO_URL = 'https://github.com/igorls/DreamServer.git';
-export const REPO_BRANCH = 'feature/cli-installer-v2';
+export const REPO_BRANCH = 'main';
 export const MIN_DRIVER_VERSION = 570;
 
 import { getHome, getDefaultInstallDir, getOsName } from './platform.ts';

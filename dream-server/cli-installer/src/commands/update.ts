@@ -17,7 +17,7 @@ export interface UpdateOptions {
   skipSelfUpdate?: boolean;
 }
 
-const RELEASE_BASE = 'https://github.com/Light-Heart-Labs/DreamServer/releases/latest/download';
+const RELEASE_BASE = 'https://github.com/igorls/DreamServer/releases/latest/download';
 
 /**
  * Get the correct binary name for the current architecture.
