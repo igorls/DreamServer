@@ -77,6 +77,7 @@ jobs:
           WEB_SEARCH_ENGINE=searxng
           N8N_AUTH=true
           N8N_HOST=localhost
+          N8N_SECURE_COOKIE=true
           N8N_WEBHOOK_URL=http://localhost:5678
           TIMEZONE=UTC
           LLAMA_CPU_LIMIT=4.0

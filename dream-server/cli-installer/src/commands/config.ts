@@ -269,6 +269,7 @@ async function toggleLanAccess(installDir: string, enable: boolean): Promise<voi
   // Update .env
   let envContent = readFileSync(envPath, 'utf-8');
   envContent = setEnvValue(envContent, 'LAN_ACCESS', String(enable));
+  envContent = setEnvValue(envContent, 'N8N_SECURE_COOKIE', String(!enable));
   writeFileSync(envPath, envContent);
   ui.ok('Updated .env');
 

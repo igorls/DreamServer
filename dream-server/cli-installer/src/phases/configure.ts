@@ -382,6 +382,7 @@ async function generateEnv(ctx: InstallContext, composeFiles: string[]): Promise
     `N8N_AUTH=true`,
     `N8N_HOST=localhost`,
     `N8N_WEBHOOK_URL=http://localhost:5678`,
+    `N8N_SECURE_COOKIE=${!ctx.lanAccess}`,
     ``,
     `# ── Compose Stack ────────────────────────────────────────────`,
     `COMPOSE_FILE=${composeFiles.map((f) => relative(ctx.installDir, f)).join(getComposeFileSeparator())}`,
