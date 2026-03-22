@@ -36,6 +36,27 @@ export async function configure(ctx: InstallContext): Promise<void> {
     ui.info('Existing installation found — updating in place');
     await gitPull(ctx);
   } else {
+    // If installDir exists without .env, it's a stale/broken previous install.
+    // Docker often leaves root-owned files in data/ that prevent overwrite.
+    if (existsSync(ctx.installDir) && !ctx.dryRun) {
+      ui.info('Stale install directory found — cleaning up...');
+      try {
+        removeDir(ctx.installDir);
+      } catch {
+        // Root-owned files from Docker volumes — need sudo to clean
+        const { execStream } = await import('../lib/shell.ts');
+        const exitCode = await execStream(
+          ['sudo', 'rm', '-rf', ctx.installDir],
+          { timeout: 15_000 },
+        );
+        if (exitCode !== 0) {
+          ui.fail(`Could not clean stale install directory: ${ctx.installDir}`);
+          ui.info(`Fix manually: sudo rm -rf ${ctx.installDir}`);
+          process.exit(1);
+        }
+      }
+      ui.ok('Cleaned stale install directory');
+    }
     await cloneRepo(ctx);
   }
 

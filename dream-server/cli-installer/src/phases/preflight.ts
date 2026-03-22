@@ -376,9 +376,17 @@ async function fixStaleDockerContext(): Promise<void> {
     const config = JSON.parse(raw);
     if (config.currentContext !== 'desktop-linux') return;
 
-    // Check if the Desktop socket actually exists
+    // Check if Docker Desktop is actually responding on its socket.
+    // A stale socket file can exist even when Docker Desktop is not running,
+    // so we must actually try to connect rather than just check file existence.
     const desktopSocket = join(homedir(), '.docker', 'desktop', 'docker.sock');
-    if (existsSync(desktopSocket)) return; // Docker Desktop is actually running
+    if (existsSync(desktopSocket)) {
+      const desktopCheck = await exec(
+        ['docker', 'info'],
+        { throwOnError: false, timeout: 3_000, env: { ...process.env, DOCKER_HOST: `unix://${desktopSocket}` } },
+      );
+      if (desktopCheck.exitCode === 0) return; // Docker Desktop is actually running
+    }
 
     // Desktop socket is missing but the standard socket exists — fix the context
     if (!existsSync('/var/run/docker.sock')) return;
