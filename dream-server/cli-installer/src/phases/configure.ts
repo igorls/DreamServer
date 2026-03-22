@@ -6,7 +6,7 @@ import { mergeEnv } from '../lib/env.ts';
 import { IS_WINDOWS, IS_MACOS, copyDir, removeDir, getComposeFileSeparator, getPermissionFixHint } from '../lib/platform.ts';
 import * as ui from '../lib/ui.ts';
 import { Spinner } from '../lib/ui.ts';
-import { existsSync, mkdirSync, copyFileSync, readdirSync, readFileSync, chmodSync } from 'node:fs';
+import { existsSync, mkdirSync, copyFileSync, readdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { join, basename, relative } from 'node:path';
 import { tmpdir, cpus as osCpus } from 'node:os';
 import { execFileSync } from 'node:child_process';
@@ -63,8 +63,6 @@ export async function configure(ctx: InstallContext): Promise<void> {
   // Generate external LLM overlay if using Ollama or external backend.
   // This overlay disables the built-in llama-server container since inference
   // is handled by an external service (Ollama on host, user-provided API, etc.)
-  // It also removes open-webui's dependency on llama-server (which would fail since
-  // llama-server is disabled via profiles).
   if (ctx.llmBackend === 'ollama' || ctx.llmBackend === 'external') {
     const overlayPath = join(ctx.installDir, 'docker-compose.external-llm.yml');
     const { writeFileSync } = await import('node:fs');
@@ -76,11 +74,12 @@ export async function configure(ctx: InstallContext): Promise<void> {
       '  llama-server:',
       '    profiles: [disabled]',
       '',
-      '  # Remove depends_on llama-server since it is disabled',
-      '  open-webui:',
-      '    depends_on: {}',
-      '',
     ].join('\n'));
+
+    // Patch docker-compose.base.yml to remove open-webui's depends_on llama-server.
+    // Docker Compose merges depends_on maps, so overlays can't clear them.
+    // We must edit the base file directly.
+    patchBaseComposeForExternalLlm(ctx.installDir);
   }
 
   // Resolve compose overlays
@@ -573,4 +572,30 @@ async function generateOpenClawConfig(ctx: InstallContext): Promise<void> {
   mkdirSync(join(ctx.installDir, 'data', 'openclaw'), { recursive: true });
   await Bun.write(configPath, JSON.stringify(config, null, 2) + '\n');
   ui.ok('Generated OpenClaw config (openclaw.json)');
+}
+
+/**
+ * Patch docker-compose.base.yml to remove open-webui's depends_on llama-server.
+ *
+ * When using an external LLM backend (Ollama, external API), the llama-server
+ * service is disabled via profiles. But Docker Compose uses map-merge semantics
+ * for depends_on, so overlays cannot clear existing dependencies. The only
+ * reliable fix is to remove the depends_on block directly from the base file.
+ */
+function patchBaseComposeForExternalLlm(installDir: string): void {
+  const basePath = join(installDir, 'docker-compose.base.yml');
+  if (!existsSync(basePath)) return;
+
+  let content = readFileSync(basePath, 'utf-8');
+
+  // Remove the depends_on block for open-webui that references llama-server:
+  //     depends_on:
+  //       llama-server:
+  //         condition: service_healthy
+  const pattern = /    depends_on:\n      llama-server:\n        condition: service_healthy\n/;
+  if (pattern.test(content)) {
+    content = content.replace(pattern, '');
+    writeFileSync(basePath, content);
+    ui.debug('Patched docker-compose.base.yml: removed open-webui depends_on llama-server');
+  }
 }
