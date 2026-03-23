@@ -1,0 +1,99 @@
+{
+  "app": {
+    "name": "DreamServer",
+    "tagline": "Asistente IA"
+  },
+  "titlebar": {
+    "minimize": "Minimizar",
+    "maximize": "Maximizar",
+    "restore": "Restaurar",
+    "close": "Cerrar"
+  },
+  "splash": {
+    "settingUp": "Preparando todo...",
+    "detectingHardware": "Detectando tu hardware...",
+    "checkingGpu": "Verificando GPU...",
+    "almostReady": "Casi listo...",
+    "foundGpu": "Encontrada tu {{gpu}}",
+    "cloudMode": "Listo para modo nube",
+    "hardwareDetected": "Hardware detectado"
+  },
+  "docker": {
+    "title": "Una cosa más...",
+    "description": "DreamServer necesita Docker para ejecutar tu IA localmente. Es gratuito y toma cerca de un minuto para instalar.",
+    "install": "Instalar Docker Desktop",
+    "alreadyHave": "Ya tengo Docker"
+  },
+  "personalize": {
+    "gpuDetected": "{{gpu}}",
+    "title": "Personalicemos esto",
+    "nameLabel": "Tu nombre",
+    "namePlaceholder": "¿Cómo debo llamarte?",
+    "voiceLabel": "Elige una voz",
+    "submit": "Vamos",
+    "greetingPreview": "¡Hola! Soy {{name}}. ¿Cómo puedo ayudarte hoy?",
+    "voices": {
+      "nova": { "name": "Nova", "desc": "Cálida y amigable" },
+      "atlas": { "name": "Atlas", "desc": "Clara y segura" },
+      "luna": { "name": "Luna", "desc": "Tranquila y gentil" },
+      "sage": { "name": "Sage", "desc": "Sabia y reflexiva" }
+    }
+  },
+  "progress": {
+    "preparingMind": "Preparando la mente de tu compañero...",
+    "downloadingModel": "Descargando el modelo perfecto...",
+    "teachingVoice": "Enseñando a {{voice}} a hablar...",
+    "settingWorkspace": "Configurando tu espacio de trabajo...",
+    "almostThere": "Casi listo...",
+    "foundGpu": "Encontrada tu {{gpu}}",
+    "voiceSelected": "Voz seleccionada: {{voice}}",
+    "timeEstimate": "Esto generalmente toma 2-3 minutos"
+  },
+  "companion": {
+    "tools": "Herramientas",
+    "system": "Sistema",
+    "online": "En línea",
+    "chat": "Chat",
+    "images": "Imágenes",
+    "workflows": "Automatizaciones",
+    "research": "Investigación",
+    "chatDesc": "Habla con tu IA",
+    "imagesDesc": "Genera y edita imágenes",
+    "workflowsDesc": "Automatiza tareas",
+    "researchDesc": "Búsqueda profunda en la web",
+    "messagePlaceholder": "Mensaje para {{voice}}...",
+    "voiceInput": "Entrada de voz",
+    "send": "Enviar mensaje",
+    "help": "Ayuda",
+    "settings": "Configuración",
+    "language": "Idioma",
+    "theme": "Tema",
+    "detecting": "Detectando...",
+    "thinking": "Pensando...",
+    "isReady": "{{voice}} está lista",
+    "gpu": "GPU",
+    "tier": "Nivel {{tier}}",
+    "services": "Servicios",
+    "running": "activo",
+    "ready": "listo",
+    "available": "disponible",
+    "installing": "instalando",
+    "llmEngine": "Motor LLM",
+    "voice": "Voz",
+    "greeting": "¡Hola{{name}}! Soy {{voice}}, tu compañera IA. Estoy configurada y lista para ayudar.\n\nNoté que tienes una GPU potente — ¿quieres que configure la generación de imágenes? Se hará en segundo plano mientras conversamos.",
+    "setupResponse": "¡Me estoy preparando! Una vez que el modelo termine de descargarse, podré ayudarte con cualquier cosa. Siéntete libre de explorar el panel de herramientas."
+  },
+  "toolWebview": {
+    "reload": "Recargar",
+    "openExternal": "Abrir en navegador",
+    "connecting": "Conectando a {{name}}...",
+    "cannotConnect": "No se puede conectar a {{name}}",
+    "checkRunning": "Asegúrate de que el servicio esté funcionando e inténtalo de nuevo.",
+    "tryAgain": "Intentar de Nuevo"
+  },
+  "theme": {
+    "dark": "Oscuro",
+    "midnight": "Medianoche",
+    "dawn": "Amanecer"
+  }
+}

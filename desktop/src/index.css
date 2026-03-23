@@ -1,0 +1,307 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── DreamServer Design System ─────────────────────────────────── */
+/* All colors driven by CSS custom properties (set by ThemeProvider) */
+
+:root {
+  --dream-bg: #0a0e27;
+  --dream-surface: #0f0d2e;
+  --dream-card: #1e1b4b;
+  --dream-border: #2e2a5e;
+  --dream-accent: #6366f1;
+  --dream-accent-light: #818cf8;
+  --dream-purple: #8b5cf6;
+  --dream-lavender: #c084fc;
+  --dream-success: #34d399;
+  --dream-muted: #94a3b8;
+  --dream-muted-dim: #64748b;
+  --dream-text: #ffffff;
+  --dream-text-secondary: #94a3b8;
+  --dream-glass-bg: rgba(15, 13, 46, 0.65);
+  --dream-glass-border: rgba(255, 255, 255, 0.04);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  background: var(--dream-bg);
+  color: var(--dream-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--dream-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--dream-muted-dim); }
+
+/* ── Glassmorphism card ───────────────────────────────────────── */
+.glass-card {
+  background: var(--dream-glass-bg);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--dream-glass-border);
+  border-radius: 1.5rem;
+}
+
+/* ── Glassmorphic floating panel ──────────────────────────────── */
+.glass-panel {
+  background: var(--dream-glass-bg);
+  backdrop-filter: blur(40px) saturate(1.5);
+  border: 1px solid var(--dream-glass-border);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+/* Dawn (light) theme overrides for panel shadows */
+[data-theme="dawn"] .glass-panel {
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+[data-theme="dawn"] .glass-card {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+}
+
+/* ── Gradient backgrounds ─────────────────────────────────────── */
+.bg-dream-gradient {
+  background: linear-gradient(180deg, var(--dream-bg) 0%, color-mix(in srgb, var(--dream-surface) 70%, var(--dream-accent) 10%) 50%, var(--dream-bg) 100%);
+}
+
+.bg-dream-radial {
+  background: radial-gradient(ellipse at center, color-mix(in srgb, var(--dream-surface) 80%, var(--dream-accent) 5%) 0%, var(--dream-bg) 70%);
+}
+
+/* ── Buttons ──────────────────────────────────────────────────── */
+.btn-primary {
+  background: linear-gradient(135deg, var(--dream-accent), var(--dream-purple));
+  color: white;
+  font-weight: 500;
+  padding: 0.75rem 2rem;
+  border-radius: 0.75rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.95rem;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 25px color-mix(in srgb, var(--dream-accent) 30%, transparent);
+}
+
+.btn-primary:active { transform: translateY(0); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--dream-muted);
+  font-weight: 400;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  border: none;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  font-size: 0.875rem;
+}
+
+.btn-ghost:hover { color: var(--dream-text); }
+
+/* ── Inputs ───────────────────────────────────────────────────── */
+.input-dream {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  background: var(--dream-card);
+  border: 1px solid var(--dream-border);
+  border-radius: 0.75rem;
+  color: var(--dream-text);
+  font-family: inherit;
+  font-size: 0.95rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  outline: none;
+}
+
+.input-dream::placeholder { color: var(--dream-muted-dim); }
+
+.input-dream:focus {
+  border-color: var(--dream-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dream-accent) 15%, transparent);
+}
+
+/* ── Animations ───────────────────────────────────────────────── */
+@keyframes float {
+  0%, 100% { transform: translateY(0px) scale(1); opacity: 0.3; }
+  50% { transform: translateY(-10px) scale(1.1); opacity: 0.6; }
+}
+
+.star {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: var(--dream-accent-light);
+  border-radius: 50%;
+  animation: float 4s ease-in-out infinite;
+}
+
+@keyframes orbPulse {
+  0%, 100% {
+    box-shadow: 0 0 60px 20px color-mix(in srgb, var(--dream-accent) 15%, transparent),
+                0 0 120px 40px color-mix(in srgb, var(--dream-purple) 8%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 80px 30px color-mix(in srgb, var(--dream-accent) 25%, transparent),
+                0 0 160px 60px color-mix(in srgb, var(--dream-purple) 12%, transparent);
+  }
+}
+
+.orb-glow { animation: orbPulse 3s ease-in-out infinite; }
+
+.progress-ring-bg { stroke: var(--dream-card); }
+
+.progress-ring-fill {
+  stroke: url(#progressGradient);
+  transition: stroke-dashoffset 0.8s ease;
+}
+
+/* ── Chat Markdown ───────────────────────────────────────────── */
+.chat-markdown {
+  line-height: 1.65;
+  word-break: break-word;
+}
+
+.chat-markdown > *:first-child { margin-top: 0; }
+.chat-markdown > *:last-child { margin-bottom: 0; }
+
+.chat-markdown p { margin: 0.4em 0; }
+.chat-markdown p:first-child { margin-top: 0; }
+.chat-markdown p:last-child { margin-bottom: 0; }
+
+/* Headings */
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3 {
+  font-weight: 600;
+  margin: 0.6em 0 0.3em;
+  line-height: 1.3;
+}
+.chat-markdown h1 { font-size: 1.1em; }
+.chat-markdown h2 { font-size: 1.05em; }
+.chat-markdown h3 { font-size: 1em; color: var(--dream-accent-light); }
+
+/* Bold & italic */
+.chat-markdown strong { font-weight: 600; color: var(--dream-text); }
+.chat-markdown em { font-style: italic; opacity: 0.9; }
+
+/* Inline code */
+.chat-markdown code {
+  font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+  font-size: 0.85em;
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--dream-text) 8%, transparent);
+  border: 1px solid var(--dream-glass-border);
+}
+
+/* Code blocks */
+.chat-markdown pre {
+  margin: 0.5em 0;
+  border-radius: 8px;
+  overflow-x: auto;
+  background: color-mix(in srgb, var(--dream-bg) 80%, transparent) !important;
+  border: 1px solid var(--dream-glass-border);
+}
+
+.chat-markdown pre code {
+  display: block;
+  padding: 0.75em 1em;
+  font-size: 0.8em;
+  line-height: 1.5;
+  background: none;
+  border: none;
+}
+
+/* Lists */
+.chat-markdown ul,
+.chat-markdown ol {
+  margin: 0.4em 0;
+  padding-left: 1.4em;
+}
+
+.chat-markdown li {
+  margin: 0.15em 0;
+}
+
+.chat-markdown li::marker {
+  color: var(--dream-muted-dim);
+}
+
+/* Links */
+.chat-markdown a {
+  color: var(--dream-accent-light);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--dream-accent-light) 30%, transparent);
+  transition: border-color 0.2s;
+}
+.chat-markdown a:hover {
+  border-bottom-color: var(--dream-accent-light);
+}
+
+/* Blockquotes */
+.chat-markdown blockquote {
+  margin: 0.5em 0;
+  padding: 0.3em 0.8em;
+  border-left: 3px solid var(--dream-accent);
+  opacity: 0.85;
+  font-style: italic;
+}
+
+/* Tables */
+.chat-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.9em;
+}
+
+.chat-markdown th,
+.chat-markdown td {
+  padding: 0.35em 0.6em;
+  text-align: left;
+  border-bottom: 1px solid var(--dream-glass-border);
+}
+
+.chat-markdown th {
+  font-weight: 600;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--dream-muted);
+}
+
+/* Horizontal rules */
+.chat-markdown hr {
+  border: none;
+  border-top: 1px solid var(--dream-glass-border);
+  margin: 0.6em 0;
+}
+
+/* Dawn theme — adjust code blocks for light bg */
+[data-theme="dawn"] .chat-markdown pre {
+  background: color-mix(in srgb, var(--dream-bg) 40%, white) !important;
+}
+
+[data-theme="dawn"] .chat-markdown code {
+  background: color-mix(in srgb, var(--dream-text) 6%, transparent);
+}
+

@@ -1,0 +1,99 @@
+{
+  "app": {
+    "name": "DreamServer",
+    "tagline": "AI Assistant"
+  },
+  "titlebar": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "close": "Close"
+  },
+  "splash": {
+    "settingUp": "Setting things up...",
+    "detectingHardware": "Detecting your hardware...",
+    "checkingGpu": "Checking for GPU...",
+    "almostReady": "Almost ready...",
+    "foundGpu": "Found your {{gpu}}",
+    "cloudMode": "Ready for cloud mode",
+    "hardwareDetected": "Hardware detected"
+  },
+  "docker": {
+    "title": "One more thing...",
+    "description": "DreamServer needs Docker to run your AI locally. It's free and takes about a minute to install.",
+    "install": "Install Docker Desktop",
+    "alreadyHave": "I already have Docker"
+  },
+  "personalize": {
+    "gpuDetected": "{{gpu}}",
+    "title": "Let's make this yours",
+    "nameLabel": "Your name",
+    "namePlaceholder": "What should I call you?",
+    "voiceLabel": "Choose a voice",
+    "submit": "Let's go",
+    "greetingPreview": "Hi there! I'm {{name}}. How can I help you today?",
+    "voices": {
+      "nova": { "name": "Nova", "desc": "Warm & friendly" },
+      "atlas": { "name": "Atlas", "desc": "Clear & confident" },
+      "luna": { "name": "Luna", "desc": "Calm & gentle" },
+      "sage": { "name": "Sage", "desc": "Wise & measured" }
+    }
+  },
+  "progress": {
+    "preparingMind": "Preparing your companion's mind...",
+    "downloadingModel": "Downloading the perfect model...",
+    "teachingVoice": "Teaching {{voice}} to speak...",
+    "settingWorkspace": "Setting up your workspace...",
+    "almostThere": "Almost there...",
+    "foundGpu": "Found your {{gpu}}",
+    "voiceSelected": "Voice selected: {{voice}}",
+    "timeEstimate": "This usually takes 2-3 minutes"
+  },
+  "companion": {
+    "tools": "Tools",
+    "system": "System",
+    "online": "Online",
+    "chat": "Chat",
+    "images": "Images",
+    "workflows": "Workflows",
+    "research": "Research",
+    "chatDesc": "Talk with your AI",
+    "imagesDesc": "Generate & edit images",
+    "workflowsDesc": "Automate tasks",
+    "researchDesc": "Deep web search",
+    "messagePlaceholder": "Message {{voice}}...",
+    "voiceInput": "Voice input",
+    "send": "Send message",
+    "help": "Help",
+    "settings": "Settings",
+    "language": "Language",
+    "theme": "Theme",
+    "detecting": "Detecting...",
+    "thinking": "Thinking...",
+    "isReady": "{{voice}} is ready",
+    "gpu": "GPU",
+    "tier": "Tier {{tier}}",
+    "services": "Services",
+    "running": "running",
+    "ready": "ready",
+    "available": "available",
+    "installing": "installing",
+    "llmEngine": "LLM Engine",
+    "voice": "Voice",
+    "greeting": "Hey{{name}}! I'm {{voice}}, your AI companion. I'm all set up and ready to help.\n\nI noticed you have a powerful GPU — want me to set up image generation? It'll happen in the background while we chat.",
+    "setupResponse": "I'm getting set up! Once the model finishes downloading, I'll be able to help you with anything. Feel free to explore the tools panel."
+  },
+  "toolWebview": {
+    "reload": "Reload",
+    "openExternal": "Open in browser",
+    "connecting": "Connecting to {{name}}...",
+    "cannotConnect": "Can't connect to {{name}}",
+    "checkRunning": "Make sure the service is running and try again.",
+    "tryAgain": "Try Again"
+  },
+  "theme": {
+    "dark": "Dark",
+    "midnight": "Midnight",
+    "dawn": "Dawn"
+  }
+}
