@@ -1,0 +1,77 @@
+{
+  "productName": "DreamServer",
+  "version": "0.1.0",
+  "identifier": "ai.dreamserver.desktop",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1421",
+    "beforeDevCommand": "bun run dev",
+    "beforeBuildCommand": "bun run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "DreamServer",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "center": true,
+        "decorations": false,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "rpm", "nsis", "dmg"],
+    "publisher": "DreamServer",
+    "copyright": "© 2026 DreamServer",
+    "category": "DeveloperTool",
+    "shortDescription": "Your Local AI Companion",
+    "longDescription": "DreamServer Desktop bundles a local AI companion with image generation, workflow automation, and research tools — all running privately on your machine.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "externalBin": [
+      "binaries/dreamserver-proxy"
+    ],
+    "linux": {
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libayatana-appindicator3-1"],
+        "section": "utils",
+        "priority": "optional"
+      },
+      "rpm": {
+        "depends": ["webkit2gtk4.1", "gtk3", "libayatana-appindicator-gtk3"]
+      }
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "both",
+        "displayLanguageSelector": false
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "dmg": {
+        "appPosition": { "x": 180, "y": 170 },
+        "applicationFolderPosition": { "x": 480, "y": 170 },
+        "windowSize": { "width": 660, "height": 400 }
+      }
+    }
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    }
+  }
+}

@@ -1,0 +1,134 @@
+name: Release Desktop App
+
+on:
+  push:
+    tags:
+      - 'desktop-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            runner: ubuntu-22.04
+            proxy-script: build:proxy:linux-x64
+            args: ''
+          - name: macOS ARM64
+            runner: macos-latest
+            proxy-script: build:proxy:macos-arm64
+            args: --target aarch64-apple-darwin
+          - name: macOS x64
+            runner: macos-13
+            proxy-script: build:proxy:macos-x64
+            args: --target x86_64-apple-darwin
+          - name: Windows x64
+            runner: windows-latest
+            proxy-script: build:proxy:windows-x64
+            args: ''
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node (for tauri-action)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.args != '' && (contains(matrix.args, 'aarch64') && 'aarch64-apple-darwin' || 'x86_64-apple-darwin') || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+
+      # Linux system dependencies for Tauri v2
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libgtk-3-dev \
+            libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev
+
+      - name: Install frontend dependencies
+        working-directory: desktop
+        run: bun install --frozen-lockfile
+
+      - name: Build proxy sidecar
+        working-directory: desktop
+        run: bun run ${{ matrix.proxy-script }}
+
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#desktop-}" >> "$GITHUB_OUTPUT"
+
+      # macOS code signing (optional — works unsigned if secrets not set)
+      - name: Import macOS signing certificate
+        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p actions build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p actions build.keychain
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
+          rm certificate.p12
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS signing (optional)
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows signing (optional)
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        with:
+          projectPath: desktop
+          tauriScript: bun run tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: "DreamServer Desktop ${{ steps.version.outputs.version }}"
+          releaseBody: |
+            ## DreamServer Desktop ${{ steps.version.outputs.version }}
+
+            ### Downloads
+
+            | Platform | File |
+            |----------|------|
+            | **Windows** | `DreamServer_${{ steps.version.outputs.version }}_x64-setup.exe` |
+            | **macOS (Apple Silicon)** | `DreamServer_${{ steps.version.outputs.version }}_aarch64.dmg` |
+            | **macOS (Intel)** | `DreamServer_${{ steps.version.outputs.version }}_x64.dmg` |
+            | **Linux (.deb)** | `DreamServer_${{ steps.version.outputs.version }}_amd64.deb` |
+            | **Linux (.AppImage)** | `DreamServer_${{ steps.version.outputs.version }}_amd64.AppImage` |
+            | **Linux (.rpm)** | `DreamServer_${{ steps.version.outputs.version }}-1.x86_64.rpm` |
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
