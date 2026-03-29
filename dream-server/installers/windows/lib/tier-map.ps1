@@ -68,30 +68,30 @@ function Resolve-TierConfig {
         "1" {
             return @{
                 TierName   = "Entry Level"
-                LlmModel   = "qwen3-8b"
-                GgufFile   = "Qwen3-8B-Q4_K_M.gguf"
-                GgufUrl    = "https://huggingface.co/unsloth/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf"
-                GgufSha256 = "120307ba529eb2439d6c430d94104dabd578497bc7bfe7e322b5d9933b449bd4"
+                LlmModel   = "qwen3.5-9b"
+                GgufFile   = "Qwen3.5-9B-Q4_K_M.gguf"
+                GgufUrl    = "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf"
+                GgufSha256 = "03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8"
                 MaxContext = 16384
             }
         }
         "2" {
             return @{
                 TierName   = "Prosumer"
-                LlmModel   = "qwen3-8b"
-                GgufFile   = "Qwen3-8B-Q4_K_M.gguf"
-                GgufUrl    = "https://huggingface.co/unsloth/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf"
-                GgufSha256 = "120307ba529eb2439d6c430d94104dabd578497bc7bfe7e322b5d9933b449bd4"
+                LlmModel   = "qwen3.5-9b"
+                GgufFile   = "Qwen3.5-9B-Q4_K_M.gguf"
+                GgufUrl    = "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf"
+                GgufSha256 = "03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8"
                 MaxContext = 32768
             }
         }
         "3" {
             return @{
                 TierName   = "Pro"
-                LlmModel   = "qwen3-30b-a3b"
-                GgufFile   = "Qwen3-30B-A3B-Q4_K_M.gguf"
-                GgufUrl    = "https://huggingface.co/unsloth/Qwen3-30B-A3B-GGUF/resolve/main/Qwen3-30B-A3B-Q4_K_M.gguf"
-                GgufSha256 = "9f1a24700a339b09c06009b729b5c809e0b64c213b8af5b711b3dbdfd0c5ba48"
+                LlmModel   = "qwen3.5-27b"
+                GgufFile   = "Qwen3.5-27B-Q4_K_M.gguf"
+                GgufUrl    = "https://huggingface.co/unsloth/Qwen3.5-27B-GGUF/resolve/main/Qwen3.5-27B-Q4_K_M.gguf"
+                GgufSha256 = "84b5f7f112156d63836a01a69dc3f11a6ba63b10a23b8ca7a7efaf52d5a2d806"
                 MaxContext = 32768
             }
         }
@@ -120,11 +120,12 @@ function ConvertTo-TierFromGpu {
     $backend = $GpuInfo.Backend
     $vramMB  = $GpuInfo.VramMB
 
-    # No GPU detected -- use Tier 0 for local inference on low-RAM machines,
-    # otherwise fall back to CLOUD (API) mode
+    # No GPU detected -- use CPU-only local inference.
+    # CLOUD mode requires the explicit --Cloud flag; never auto-select it
+    # because it needs an API key the user may not have.
     if ($backend -eq "none") {
-        if ($SystemRamGB -lt 12) { return "0" }
-        return "CLOUD"
+        if ($SystemRamGB -lt 8) { return "0" }
+        return "1"
     }
 
     # AMD Strix Halo -- tier based on system RAM (unified memory)
@@ -156,9 +157,9 @@ function ConvertTo-ModelFromTier {
         "^SH_LARGE$"             { return "qwen3-coder-next" }
         "^(SH_COMPACT|SH)$"     { return "qwen3-30b-a3b" }
         "^(0|T0)$"               { return "qwen3.5-2b" }
-        "^(1|T1)$"               { return "qwen3-8b" }
-        "^(2|T2)$"               { return "qwen3-8b" }
-        "^(3|T3)$"               { return "qwen3-30b-a3b" }
+        "^(1|T1)$"               { return "qwen3.5-9b" }
+        "^(2|T2)$"               { return "qwen3.5-9b" }
+        "^(3|T3)$"               { return "qwen3.5-27b" }
         "^(4|T4)$"               { return "qwen3-30b-a3b" }
         default                  { return "" }
     }

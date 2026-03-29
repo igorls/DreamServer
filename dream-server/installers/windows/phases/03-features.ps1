@@ -60,7 +60,7 @@ if (-not $nonInteractive -and -not $allFlag -and -not $dryRun) {
             $enableWorkflows = (Read-Host "  Enable Workflows (n8n, 400+ integrations)? [y/N]") -match "^[yY]"
             $enableRag       = (Read-Host "  Enable RAG (Qdrant vector DB + embeddings)? [y/N]") -match "^[yY]"
             $enableOpenClaw  = (Read-Host "  Enable OpenClaw (autonomous AI agents)?    [y/N]") -match "^[yY]"
-            $enableComfyui   = (Read-Host "  Enable image generation (ComfyUI + FLUX, ~34GB)? [y/N]") -match "^[yY]"
+            $enableComfyui   = (Read-Host "  Enable image generation (ComfyUI + SDXL Lightning, ~6.5GB)? [y/N]") -match "^[yY]"
 
             # Warn on low-tier
             if ($enableComfyui -and ($selectedTier -eq "0" -or $selectedTier -eq "1")) {
@@ -86,11 +86,17 @@ if (-not $nonInteractive -and -not $allFlag -and -not $dryRun) {
     }
 }
 
-# Tier safety net: disable ComfyUI on Tier 0/1 in non-interactive mode.
+# Tier safety net: disable ComfyUI on Tier 0/1 or CLOUD in non-interactive mode.
 # Interactive mode has its own tier checks in the menu — this catches -NonInteractive.
 if ($nonInteractive -and $enableComfyui -and ($selectedTier -eq "0" -or $selectedTier -eq "1")) {
     $enableComfyui = $false
     Write-AI "ComfyUI auto-disabled for Tier $selectedTier (insufficient RAM for shm_size 8GB)"
+}
+
+# CLOUD tier cannot use ComfyUI (no local GPU for image generation)
+if ($enableComfyui -and $selectedTier -eq "CLOUD") {
+    $enableComfyui = $false
+    Write-AIWarn "ComfyUI disabled for CLOUD tier (requires local GPU for image generation)"
 }
 
 # ── Feature summary ───────────────────────────────────────────────────────────

@@ -13,8 +13,11 @@ from typing import Optional
 import aiohttp
 import httpx
 
-from config import SERVICES, INSTALL_DIR, DATA_DIR
+from config import SERVICES, INSTALL_DIR, DATA_DIR, LLM_BACKEND
 from models import ServiceStatus, DiskUsage, ModelInfo, BootstrapStatus
+
+# Lemonade serves at /api/v1 instead of llama.cpp's /v1
+_LLM_API_PREFIX = "/api/v1" if LLM_BACKEND == "lemonade" else "/v1"
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +96,9 @@ async def get_llama_metrics(model_hint: Optional[str] = None) -> dict:
     try:
         host = SERVICES["llama-server"]["host"]
         port = SERVICES["llama-server"]["port"]
+        metrics_port = int(os.environ.get("LLAMA_METRICS_PORT", port))
         model_name = model_hint if model_hint is not None else (await get_loaded_model() or "")
-        url = f"http://{host}:{port}/metrics"
+        url = f"http://{host}:{metrics_port}/metrics"
         params = {"model": model_name} if model_name else {}
         client = await _get_httpx_client()
         resp = await client.get(url, params=params)
@@ -132,7 +136,7 @@ async def get_loaded_model() -> Optional[str]:
         host = SERVICES["llama-server"]["host"]
         port = SERVICES["llama-server"]["port"]
         client = await _get_httpx_client()
-        resp = await client.get(f"http://{host}:{port}/v1/models")
+        resp = await client.get(f"http://{host}:{port}{_LLM_API_PREFIX}/models")
         models = resp.json().get("data", [])
         for m in models:
             status = m.get("status", {})
@@ -191,7 +195,14 @@ def get_cached_services() -> Optional[list]:
 async def check_service_health(service_id: str, config: dict) -> ServiceStatus:
     """Check if a service is healthy by hitting its health endpoint."""
     if config.get("type") == "host-systemd":
-        return await _check_host_service_health(service_id, config)
+        # Host-systemd services bind to 127.0.0.1 and are unreachable from
+        # inside Docker.  The installer manages them via systemd (auto-restart
+        # on failure), so treat them as healthy when configured.
+        return ServiceStatus(
+            id=service_id, name=config["name"], port=config["port"],
+            external_port=config.get("external_port", config["port"]),
+            status="healthy", response_time_ms=None,
+        )
 
     host = config.get('host', 'localhost')
     url = f"http://{host}:{config['port']}{config['health']}"

@@ -39,18 +39,18 @@ resolve_tier_config() {
             ;;
         3)
             TIER_NAME="Pro"
-            LLM_MODEL="qwen3-30b-a3b"
-            GGUF_FILE="Qwen3-30B-A3B-Q4_K_M.gguf"
-            GGUF_URL="https://huggingface.co/unsloth/Qwen3-30B-A3B-GGUF/resolve/main/Qwen3-30B-A3B-Q4_K_M.gguf"
-            GGUF_SHA256="9f1a24700a339b09c06009b729b5c809e0b64c213b8af5b711b3dbdfd0c5ba48"
+            LLM_MODEL="qwen3.5-27b"
+            GGUF_FILE="Qwen3.5-27B-Q4_K_M.gguf"
+            GGUF_URL="https://huggingface.co/unsloth/Qwen3.5-27B-GGUF/resolve/main/Qwen3.5-27B-Q4_K_M.gguf"
+            GGUF_SHA256="84b5f7f112156d63836a01a69dc3f11a6ba63b10a23b8ca7a7efaf52d5a2d806"
             MAX_CONTEXT=32768
             ;;
         2)
             TIER_NAME="Prosumer"
-            LLM_MODEL="qwen3-8b"
-            GGUF_FILE="Qwen3-8B-Q4_K_M.gguf"
-            GGUF_URL="https://huggingface.co/unsloth/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf"
-            GGUF_SHA256="120307ba529eb2439d6c430d94104dabd578497bc7bfe7e322b5d9933b449bd4"
+            LLM_MODEL="qwen3.5-9b"
+            GGUF_FILE="Qwen3.5-9B-Q4_K_M.gguf"
+            GGUF_URL="https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf"
+            GGUF_SHA256="03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8"
             MAX_CONTEXT=32768
             ;;
         0)
@@ -63,10 +63,10 @@ resolve_tier_config() {
             ;;
         1)
             TIER_NAME="Entry Level"
-            LLM_MODEL="qwen3-4b"
-            GGUF_FILE="Qwen3-4B-Q4_K_M.gguf"
-            GGUF_URL="https://huggingface.co/unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf"
-            GGUF_SHA256="f6f851777709861056efcdad3af01da38b31223a3ba26e61a4f8bf3a2195813a"
+            LLM_MODEL="qwen3.5-9b"
+            GGUF_FILE="Qwen3.5-9B-Q4_K_M.gguf"
+            GGUF_URL="https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf"
+            GGUF_SHA256="03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8"
             MAX_CONTEXT=16384
             ;;
         *)
@@ -95,7 +95,7 @@ auto_select_tier() {
     elif [[ "$ram_gb" -ge 32 ]]; then
         echo "2"
     elif [[ "$ram_gb" -ge 16 ]]; then
-        # 16–31 GB unified → lightweight 4B model
+        # 16–31 GB unified → 9B model
         echo "1"
     else
         # < 16 GB unified → ultra-lightweight 2B model

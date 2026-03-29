@@ -57,6 +57,16 @@ else
     if $DRY_RUN; then
         log "[DRY RUN] Would install Docker via official script"
     else
+        # In non-interactive mode, fail fast if sudo requires a password
+        if [[ "${INTERACTIVE:-true}" != "true" ]] && ! sudo -n true 2>/dev/null; then
+            ai_bad "Docker is not installed and sudo requires a password."
+            ai_bad "In non-interactive mode, either:"
+            ai "  1. Run with passwordless sudo (NOPASSWD in sudoers)"
+            ai "  2. Install Docker manually first, then re-run with --skip-docker"
+            ai "  3. Run the installer interactively (without --non-interactive)"
+            error "Cannot install Docker without sudo in non-interactive mode."
+        fi
+
         case "$PKG_MANAGER" in
             apt|dnf|zypper)
                 # Docker CE via get.docker.com (supports Debian/Ubuntu/Fedora/RHEL/SLES)
@@ -127,6 +137,16 @@ if command -v docker &>/dev/null && ! $DRY_RUN; then
             sudo dnf downgrade -y docker-ce-29.2.1 docker-ce-cli-29.2.1 >> "$LOG_FILE" 2>&1 && \
                 ai_ok "Docker downgraded to 29.2.1 (AMD GPU fix)" || \
                 ai_warn "Could not downgrade Docker. GPU containers may fail."
+        elif command -v pacman &>/dev/null; then
+            # pacman does not support version pinning from official repos.
+            # Warn the user with clear manual instructions.
+            ai_warn "Automatic Docker downgrade is not supported on pacman-based distros."
+            ai_warn "GPU containers may fail with device passthrough errors."
+            ai "  Manual fix: downgrade Docker from the Arch Linux Archive:"
+            ai "    sudo pacman -U https://archive.archlinux.org/packages/d/docker/docker-1%3A29.2.1-1-x86_64.pkg.tar.zst"
+            ai "  Or wait for Docker to fix the bug in a future release."
+        else
+            ai_warn "Could not downgrade Docker on this system. GPU containers may fail."
         fi
         sudo systemctl restart docker 2>/dev/null || true
     fi
@@ -225,7 +245,14 @@ _docker_ensure_daemon() {
     if command -v systemctl &>/dev/null; then
         ai_warn "Docker not responding; attempting to start docker service..."
         if ! $DRY_RUN; then
+            # Clear start-limit-hit if docker has been restarted too many times
+            if systemctl is-failed docker &>/dev/null; then
+                ai_warn "Docker is in failed state (possible start-limit-hit). Resetting..."
+                sudo systemctl reset-failed docker 2>>"$LOG_FILE" || true
+            fi
             sudo systemctl start docker 2>>"$LOG_FILE" || true
+            # Give the daemon a moment to initialize
+            sleep 2
         fi
         if _docker_try_with_optional_sudo info; then
             return 0
