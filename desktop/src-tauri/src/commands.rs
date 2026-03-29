@@ -222,6 +222,53 @@ pub fn get_install_state() -> InstallState {
     InstallState::default()
 }
 
+// ---- Configuration ----
+
+#[derive(Serialize)]
+pub struct EnvConfig {
+    pub ollama_port: u16,
+    pub whisper_port: u16,
+    pub llm_backend: String,
+    pub llm_api_url: String,
+}
+
+#[tauri::command]
+pub fn get_env_config() -> EnvConfig {
+    let mut config = EnvConfig {
+        ollama_port: 11434,
+        whisper_port: 9000,
+        llm_backend: "llamacpp".to_string(),
+        llm_api_url: "http://localhost:8080/v1".to_string(),
+    };
+
+    if let Some(p) = find_dream_server_dir() {
+        let env_file = p.join(".env");
+        if env_file.exists() {
+            if let Ok(content) = std::fs::read_to_string(&env_file) {
+                for line in content.lines() {
+                    let text = line.trim();
+                    if text.starts_with('#') || text.is_empty() {
+                        continue;
+                    }
+                    if let Some((key, val)) = text.split_once('=') {
+                        let k = key.trim();
+                        let v = val.trim().trim_matches('"').trim_matches('\'').to_string();
+                        match k {
+                            "OLLAMA_PORT" => { if let Ok(n) = v.parse() { config.ollama_port = n; } },
+                            "WHISPER_PORT" => { if let Ok(n) = v.parse() { config.whisper_port = n; } },
+                            "LLM_BACKEND" => config.llm_backend = v,
+                            "LLM_API_URL" => config.llm_api_url = v,
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    config
+}
+
 // ---- Open DreamServer ----
 
 #[tauri::command]
@@ -291,9 +338,11 @@ pub async fn docker_compose_action(
         "perplexica",   // AI search
         "litellm",      // LLM proxy
         "langfuse",     // Observability
-        "token-spy",    // Token usage
-        "openclaw",     // OpenClaw
+        "token-spy",      // Token usage
+        "openclaw",       // OpenClaw
         "privacy-shield", // Privacy filtering
+        "gitea",          // Code versioning
+        "localai",        // LocalAI endpoint
     ];
 
     const ALLOWED_ACTIONS: &[&str] = &["up", "stop", "restart", "ps", "logs", "pull"];
@@ -508,21 +557,10 @@ pub async fn docker_compose_action(
     }
 }
 
-/// Find the dream-server directory
-fn find_dream_server_dir() -> Option<std::path::PathBuf> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-    let home_path = std::path::PathBuf::from(&home);
-    
-    // Check common locations
-    let candidates = vec![
-        // Development location
-        home_path.join("dev/upwork/DreamServer/dream-server"),
-        // Standard install location  
-        home_path.join("dream-server"),
-        home_path.join(".dream-server"),
-    ];
-
-    // Also check the state file for install_dir
+/// Find the dream-server directory.
+/// Checks the persisted installer state first, then well-known CLI installer paths.
+pub fn find_dream_server_dir() -> Option<std::path::PathBuf> {
+    // Priority 1: saved install state from the desktop installer
     let state_path = state_file_path();
     if let Ok(data) = std::fs::read_to_string(&state_path) {
         if let Ok(state) = serde_json::from_str::<InstallState>(&data) {
@@ -534,6 +572,22 @@ fn find_dream_server_dir() -> Option<std::path::PathBuf> {
             }
         }
     }
+
+    // Priority 2: well-known CLI installer locations
+    #[cfg(target_os = "windows")]
+    let home = std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\Users\\Public".into());
+    #[cfg(not(target_os = "windows"))]
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    let home_path = std::path::PathBuf::from(&home);
+
+    let candidates = vec![
+        // CLI installer default: ~/DreamServer/dream-server
+        home_path.join("DreamServer/dream-server"),
+        // Flat: ~/dream-server
+        home_path.join("dream-server"),
+        // Hidden: ~/.dream-server
+        home_path.join(".dream-server"),
+    ];
 
     for candidate in candidates {
         if candidate.join("docker-compose.base.yml").exists() {
@@ -807,5 +861,110 @@ pub fn list_service_catalog() -> CatalogResult {
         services,
         dream_server_found: true,
         error: None,
+    }
+}
+
+// ---- Existing install detection ----
+
+#[derive(Serialize)]
+pub struct ExistingInstall {
+    pub found: bool,
+    pub path: Option<String>,
+    pub has_env: bool,
+    pub services_running: bool,
+}
+
+#[tauri::command]
+pub fn detect_existing_install() -> ExistingInstall {
+    match find_dream_server_dir() {
+        Some(dir) => {
+            let has_env = dir.join(".env").exists();
+            let services_running = if has_env {
+                // Quick check: is docker compose reporting any running containers?
+                std::process::Command::new("docker")
+                    .args(["compose", "-f", "docker-compose.base.yml", "ps", "-q"])
+                    .current_dir(&dir)
+                    .output()
+                    .map(|o| o.status.success() && !o.stdout.is_empty())
+                    .unwrap_or(false)
+            } else {
+                false
+            };
+            ExistingInstall {
+                found: true,
+                path: Some(dir.to_string_lossy().to_string()),
+                has_env,
+                services_running,
+            }
+        }
+        None => ExistingInstall {
+            found: false,
+            path: None,
+            has_env: false,
+            services_running: false,
+        },
+    }
+}
+
+// ---- Stop all services ----
+
+#[derive(Serialize)]
+pub struct StopAllResult {
+    pub success: bool,
+    pub message: String,
+}
+
+#[tauri::command]
+pub async fn stop_all_services() -> StopAllResult {
+    let dir = match find_dream_server_dir() {
+        Some(d) => d,
+        None => {
+            return StopAllResult {
+                success: false,
+                message: "DreamServer directory not found.".into(),
+            };
+        }
+    };
+
+    let result = tokio::task::spawn_blocking(move || {
+        let gpu = gpu::detect();
+        let gpu_overlay = match gpu.vendor {
+            crate::state::GpuVendor::Nvidia => "docker-compose.nvidia.yml",
+            crate::state::GpuVendor::Amd => "docker-compose.amd.yml",
+            crate::state::GpuVendor::Intel => "docker-compose.intel.yml",
+            crate::state::GpuVendor::Apple => "docker-compose.apple.yml",
+            crate::state::GpuVendor::None => "docker-compose.cpu.yml",
+        };
+
+        std::process::Command::new("docker")
+            .args(["compose", "-f", "docker-compose.base.yml", "-f", gpu_overlay, "down"])
+            .current_dir(&dir)
+            .output()
+    })
+    .await;
+
+    match result {
+        Ok(Ok(output)) => {
+            if output.status.success() {
+                StopAllResult {
+                    success: true,
+                    message: "All services stopped.".into(),
+                }
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                StopAllResult {
+                    success: false,
+                    message: format!("docker compose down failed: {}", stderr),
+                }
+            }
+        }
+        Ok(Err(e)) => StopAllResult {
+            success: false,
+            message: format!("Failed to run docker compose: {}", e),
+        },
+        Err(e) => StopAllResult {
+            success: false,
+            message: format!("Task error: {}", e),
+        },
     }
 }

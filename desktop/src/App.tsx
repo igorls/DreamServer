@@ -1,5 +1,6 @@
 import { useState, useEffect, lazy, Suspense, useCallback } from "react";
 import { load } from "@tauri-apps/plugin-store";
+import { invoke } from "@tauri-apps/api/core";
 import TitleBar from "./components/TitleBar";
 
 const Splash = lazy(() => import("./wizard/Splash"));
@@ -44,13 +45,32 @@ export default function App() {
           // User completed wizard before — go straight to companion
           setSetup(saved);
           setMode("companion");
-        } else {
-          setMode("wizard");
+          return;
         }
       } catch {
-        // First launch or store unavailable — start wizard
-        setMode("wizard");
+        // Store unavailable — continue to CLI detection
       }
+
+      // Check if user installed via CLI installer
+      try {
+        const existing = await invoke<{
+          found: boolean;
+          path: string | null;
+          has_env: boolean;
+          services_running: boolean;
+        }>("detect_existing_install");
+
+        if (existing.found && existing.has_env) {
+          // CLI install detected — skip wizard, go straight to companion
+          setSetup((prev) => ({ ...prev, userName: "Friend", dockerReady: true }));
+          setMode("companion");
+          return;
+        }
+      } catch {
+        // Detection failed — fall through to wizard
+      }
+
+      setMode("wizard");
     }
     loadConfig();
   }, []);
