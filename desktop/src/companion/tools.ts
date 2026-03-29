@@ -3,7 +3,8 @@
  * Each tool can be called by the LLM via Ollama's tool calling API.
  */
 
-const OLLAMA_BASE = "http://localhost:11434";
+import { fetchEnvConfig } from "./config";
+
 const COMFYUI_BASE = "http://localhost:8188";
 const N8N_PROXY_BASE = "http://localhost:5679";
 export const backgroundJobs = new Map<string, { service: string, action: string, startTime: number }>();
@@ -225,7 +226,8 @@ async function getSystemInfo(): Promise<string> {
 
   // Check GPU via Ollama's running model info
   try {
-    const res = await fetch(`${OLLAMA_BASE}/api/ps`);
+    const config = await fetchEnvConfig();
+    const res = await fetch(`http://localhost:${config.ollama_port}/api/ps`);
     if (res.ok) {
       const data = await res.json();
       const models = data.models ?? [];
@@ -257,7 +259,8 @@ async function getSystemInfo(): Promise<string> {
 
 async function listOllamaModels(): Promise<string> {
   try {
-    const res = await fetch(`${OLLAMA_BASE}/api/tags`);
+    const config = await fetchEnvConfig();
+    const res = await fetch(`http://localhost:${config.ollama_port}/api/tags`);
     if (!res.ok) return JSON.stringify({ error: "Ollama not reachable" });
     const data = await res.json();
     const allModels = data.models ?? [];
@@ -293,7 +296,8 @@ async function listOllamaModels(): Promise<string> {
 
 async function getRunningModels(): Promise<string> {
   try {
-    const res = await fetch(`${OLLAMA_BASE}/api/ps`);
+    const config = await fetchEnvConfig();
+    const res = await fetch(`http://localhost:${config.ollama_port}/api/ps`);
     if (!res.ok) return JSON.stringify({ error: "Ollama not reachable" });
     const data = await res.json();
     const models = (data.models ?? []).map((m: {
@@ -320,7 +324,8 @@ async function getRunningModels(): Promise<string> {
 
 async function pullModel(model: string): Promise<string> {
   try {
-    const res = await fetch(`${OLLAMA_BASE}/api/pull`, {
+    const config = await fetchEnvConfig();
+    const res = await fetch(`http://localhost:${config.ollama_port}/api/pull`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: model, stream: false }),
@@ -359,11 +364,12 @@ export async function checkDockerServices(): Promise<string> {
     return JSON.stringify({ error: "Docker API returned error" });
   } catch {
     // Docker API not directly available — try a health check approach
+    const config = await fetchEnvConfig();
     const checks = [
       { name: "ComfyUI (Images)", url: "http://localhost:8188" },
       { name: "n8n (Workflows)", url: "http://localhost:5679" },
       { name: "Open WebUI (Research)", url: "http://localhost:3000" },
-      { name: "Ollama", url: `${OLLAMA_BASE}/api/tags` },
+      { name: "Ollama", url: `http://localhost:${config.ollama_port}/api/tags` },
     ];
 
     const results = await Promise.all(
@@ -611,12 +617,19 @@ async function listServiceCatalog(): Promise<string> {
       return JSON.stringify({ error: result.error });
     }
 
+    const config = await fetchEnvConfig();
+
     // Update the health map with real data from manifests
     for (const svc of result.services) {
+      let extPort = svc.external_port || svc.port;
+      if (svc.id === "whisper") extPort = config.whisper_port;
+      
       SERVICE_HEALTH_MAP[svc.id] = {
-        port: svc.external_port || svc.port,
+        port: extPort,
         health: svc.health_endpoint,
       };
+      
+      svc.external_port = extPort;
     }
 
     // Format for the LLM — group by category
@@ -654,6 +667,11 @@ async function listServiceCatalog(): Promise<string> {
 }
 
 async function checkServiceHealth(serviceId: string): Promise<string> {
+  const config = await fetchEnvConfig();
+  if (serviceId === "whisper" && SERVICE_HEALTH_MAP["whisper"]) {
+    SERVICE_HEALTH_MAP["whisper"].port = config.whisper_port;
+  }
+
   const entry = SERVICE_HEALTH_MAP[serviceId];
   if (!entry) {
     return JSON.stringify({

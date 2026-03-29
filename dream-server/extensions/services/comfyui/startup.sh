@@ -75,4 +75,7 @@ elif command -v python >/dev/null 2>&1 && python -c 'import sys; sys.exit(0)' >/
     PYTHON_CMD="python"
 fi
 
-exec "$PYTHON_CMD" main.py --listen 0.0.0.0 --port 8188
+# Patch strict origin check for local frontend (Tauri)
+sed -i 's/if host_domain != origin_domain:/if False:/g' /opt/comfyui/server.py
+
+exec "$PYTHON_CMD" main.py --listen 0.0.0.0 --port 8188 --enable-cors-header "*"

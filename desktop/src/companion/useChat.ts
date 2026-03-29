@@ -4,8 +4,8 @@ import type { LLMChatMessage, LLMToolCall } from "universal-llm-client";
 import type { Message, TextMessage, ToolMessage } from "./ChatMessageList";
 import { executeTool, type ToolCall } from "./tools";
 import { buildSystemPrompt } from "./personalities";
+import { fetchEnvConfig } from "./config";
 
-const OLLAMA_BASE = "http://localhost:11434";
 const MAX_TOOL_ROUNDS = 8;
 
 export interface ChatState {
@@ -185,10 +185,10 @@ export function useChat(initialGreeting?: string, options?: UseChatOptions) {
   }, [initialGreeting]);
 
   /** Create AIModel instance — tools are registered but NOT auto-executed */
-  function createModel(modelName: string): AIModel {
+  function createModel(modelName: string, baseUrl: string): AIModel {
     const model = new AIModel({
       model: modelName,
-      providers: [{ type: "ollama", url: OLLAMA_BASE }],
+      providers: [{ type: "ollama", url: baseUrl }],
       timeout: 120000,
       debug: true,
     });
@@ -214,9 +214,12 @@ export function useChat(initialGreeting?: string, options?: UseChatOptions) {
   /** Detect Ollama and list models */
   const connect = useCallback(async () => {
     try {
+      const config = await fetchEnvConfig();
+      const baseUrl = `http://localhost:${config.ollama_port}`;
+
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 3000);
-      const res = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: controller.signal });
+      const res = await fetch(`${baseUrl}/api/tags`, { signal: controller.signal });
       clearTimeout(timeout);
 
       if (!res.ok) throw new Error("Ollama not reachable");
@@ -227,7 +230,7 @@ export function useChat(initialGreeting?: string, options?: UseChatOptions) {
       const defaultModel = pickDefaultModel(modelNames);
 
       if (defaultModel) {
-        aiModelRef.current = createModel(defaultModel);
+        aiModelRef.current = createModel(defaultModel, baseUrl);
       }
 
       setState((prev) => ({
@@ -244,7 +247,7 @@ export function useChat(initialGreeting?: string, options?: UseChatOptions) {
         ...prev,
         isConnected: false,
         backendName: null,
-        error: "No LLM backend found. Start Ollama.",
+        error: "No LLM backend found on this port. Check if Ollama or LiteLLM is running.",
       }));
       return false;
     }
@@ -253,8 +256,10 @@ export function useChat(initialGreeting?: string, options?: UseChatOptions) {
 
   /** Change the active model */
   const setModel = useCallback((modelName: string) => {
-    aiModelRef.current = createModel(modelName);
-    setState((prev) => ({ ...prev, model: modelName }));
+    fetchEnvConfig().then(config => {
+      aiModelRef.current = createModel(modelName, `http://localhost:${config.ollama_port}`);
+      setState((prev) => ({ ...prev, model: modelName }));
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -482,7 +487,9 @@ export function useChat(initialGreeting?: string, options?: UseChatOptions) {
   // Recreate model when onOpenTool changes
   useEffect(() => {
     if (aiModelRef.current && state.model) {
-      aiModelRef.current = createModel(state.model);
+      fetchEnvConfig().then(config => {
+        aiModelRef.current = createModel(state.model!, `http://localhost:${config.ollama_port}`);
+      });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options?.onOpenTool]);

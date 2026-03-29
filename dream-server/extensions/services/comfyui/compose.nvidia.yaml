@@ -1,7 +1,7 @@
 services:
   comfyui:
     build:
-      context: ./extensions/services/comfyui
+      context: .
       dockerfile: Dockerfile
     container_name: dream-comfyui
     restart: unless-stopped
